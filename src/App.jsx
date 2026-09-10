@@ -921,7 +921,7 @@ function EmployeesTab({ employees, onAdd, onSetPin, onToggleActive, onChangeRole
         <button className="orb-icon-btn" title="Generate a new PIN" onClick={() => setPin(genPin())}><RefreshCw size={14} /></button>
         <button className="orb-btn orb-btn-primary" disabled={!name.trim() || !/^\d{4}$/.test(pin)} onClick={submitAdd}><Plus size={15} /> Add</button>
       </div>
-      <div className="orb-hint">Set their PIN here (or use the generated one) and tell them what it is — this is the only place it's shown.</div>
+      <div className="orb-hint">Set their PIN here (or use the generated one) and tell them what it is, this is the only place it's shown.</div>
       {addMsg && <div className="orb-banner orb-banner-info" style={{ marginTop: 10 }}>{addMsg}</div>}
 
       <div className="orb-subhead">Team</div>
