@@ -1378,7 +1378,10 @@ export default function App() {
 
     let empList;
     if (healthy) {
-      let empRows = await sbSelect("employees", "?select=*");
+      let empRows = await sbSelect(
+  "employees",
+  "?select=id,name,role,active"
+);
       if (empRows && empRows.length === 0) {
         await sbUpsert("employees", SEED_EMPLOYEES);
         empRows = SEED_EMPLOYEES;
