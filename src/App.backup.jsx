@@ -84,52 +84,6 @@ async function sbSelect(table, query = "?select=*") {
   }
 }
 
-async function verifyEmployeePin(employeeId, pin) {
-  if (!DB_CONFIGURED) {
-    return {
-      employee: null,
-      error: new Error("Database is not configured"),
-    };
-  }
-
-  try {
-    const res = await fetch(
-      `${SB_URL}/rest/v1/rpc/verify_employee_pin`,
-      {
-        method: "POST",
-        headers: sbHeaders(),
-        body: JSON.stringify({
-          p_employee_id: employeeId,
-          p_pin: pin,
-        }),
-      }
-    );
-
-    if (!res.ok) {
-      const detail = await res.text();
-      throw new Error(
-        `PIN verification failed (${res.status}): ${detail}`
-      );
-    }
-
-    const rows = await res.json();
-
-    return {
-      employee:
-        Array.isArray(rows) && rows.length > 0
-          ? rows[0]
-          : null,
-      error: null,
-    };
-  } catch (e) {
-    console.warn("Orbital X PIN verification failed:", e);
-    return {
-      employee: null,
-      error: e,
-    };
-  }
-}
-
 // Upsert always sends the FULL row. That matches how this app already keeps
 // full objects in local state, and lets one function cover both "create"
 // and "update" (insert, or overwrite on primary-key conflict).
@@ -377,38 +331,7 @@ function LoginScreen({ employees, onLogin, dbOk, onRetryDb, checkingDb }) {
     if (pickedId && inputRef.current) inputRef.current.focus();
   }, [pickedId]);
 
-  async function submit() {
-    if (!picked || !pin) return;
-
-    if (!/^\d{4}$/.test(pin)) {
-      setError("Enter your 4-digit PIN.");
-      return;
-    }
-
-    setError("");
-
-    const { employee, error: verifyError } =
-      await verifyEmployeePin(picked.id, pin);
-
-    if (employee) {
-      onLogin(employee.id);
-      return;
-    }
-
-    if (verifyError) {
-      setError(
-        "Unable to verify your PIN. Check the database connection and try again."
-      );
-    } else {
-      setError("That PIN doesn't match. Try again.");
-    }
-
-    setShake(true);
-    setPin("");
-    setTimeout(() => setShake(false), 420);
-  }
-  /*replaced with code above*/
-  /*function submit() {
+  function submit() {
     if (!picked) return;
     if (pin === picked.pin) {
       setError("");
@@ -419,7 +342,7 @@ function LoginScreen({ employees, onLogin, dbOk, onRetryDb, checkingDb }) {
       setPin("");
       setTimeout(() => setShake(false), 420);
     }
-  }*/
+  }
 
   return (
     <div className="orb-login">
