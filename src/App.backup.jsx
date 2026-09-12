@@ -38,11 +38,11 @@ const DEFAULT_BREAK_MINUTES = 30;
 /* ---------------------------------- Seed data ---------------------------------- */
 
 const SEED_EMPLOYEES = [
-  { id: "admin", name: "Admin", role: "admin", pin: "0000", active: true },
-  { id: "christine", name: "Christine", role: "tasker", pin: "1001", active: true },
-  { id: "kali", name: "Kali", role: "tasker", pin: "1002", active: true },
-  { id: "meshack", name: "Meshack", role: "tasker", pin: "1003", active: true },
-  { id: "denno", name: "Denno", role: "tasker", pin: "1004", active: true },
+  { id: "admin", name: "Admin", role: "admin", active: true },
+  { id: "christine", name: "Christine", role: "tasker", active: true },
+  { id: "kali", name: "Kali", role: "tasker", active: true },
+  { id: "meshack", name: "Meshack", role: "tasker", active: true },
+  { id: "denno", name: "Denno", role: "tasker", active: true },
 ];
 
 // Historical totals migrated from each tasker's spreadsheet tracker.
@@ -117,6 +117,43 @@ async function sbDelete(table, id) {
   } catch (e) {
     console.warn("Orbital X DB delete failed:", table, e);
     return false;
+  }
+}
+
+async function verifyEmployeePin(employeeId, pin) {
+  if (!DB_CONFIGURED) return { employee: null, error: new Error("Database is not configured") };
+  try {
+    const res = await fetch(`${SB_URL}/rest/v1/rpc/verify_employee_pin`, {
+      method: "POST",
+      headers: sbHeaders(),
+      body: JSON.stringify({ p_employee_id: employeeId, p_pin: pin }),
+    });
+    if (!res.ok) {
+      const detail = await res.text();
+      throw new Error(`PIN verification failed (${res.status}): ${detail}`);
+    }
+    const rows = await res.json();
+    return { employee: Array.isArray(rows) && rows.length ? rows[0] : null, error: null };
+  } catch (e) {
+    console.warn("Orbital X PIN verification failed:", e);
+    return { employee: null, error: e };
+  }
+}
+
+async function callRpc(name, body) {
+  if (!DB_CONFIGURED) return { data: null, error: new Error("Database is not configured") };
+  try {
+    const res = await fetch(`${SB_URL}/rest/v1/rpc/${name}`, {
+      method: "POST",
+      headers: sbHeaders(),
+      body: JSON.stringify(body),
+    });
+    const text = await res.text();
+    if (!res.ok) throw new Error(`${name} failed (${res.status}): ${text}`);
+    return { data: text ? JSON.parse(text) : null, error: null };
+  } catch (e) {
+    console.warn(`Orbital X RPC failed: ${name}`, e);
+    return { data: null, error: e };
   }
 }
 
@@ -331,17 +368,26 @@ function LoginScreen({ employees, onLogin, dbOk, onRetryDb, checkingDb }) {
     if (pickedId && inputRef.current) inputRef.current.focus();
   }, [pickedId]);
 
-  function submit() {
-    if (!picked) return;
-    if (pin === picked.pin) {
-      setError("");
-      onLogin(picked.id);
+  async function submit() {
+    if (!picked || !pin) return;
+    if (!/^\d{4}$/.test(pin)) {
+      setError("Enter your 4-digit PIN.");
+      return;
+    }
+    setError("");
+    const { employee, error: verifyError } = await verifyEmployeePin(picked.id, pin);
+    if (employee) {
+      onLogin(employee.id);
+      return;
+    }
+    if (verifyError) {
+      setError("Unable to verify your PIN. Check the database connection and try again.");
     } else {
       setError("That PIN doesn't match. Try again.");
-      setShake(true);
-      setPin("");
-      setTimeout(() => setShake(false), 420);
     }
+    setShake(true);
+    setPin("");
+    setTimeout(() => setShake(false), 420);
   }
 
   return (
@@ -468,11 +514,13 @@ function ChangePinModal({ user, onClose, onSave }) {
   const [confirm, setConfirm] = useState("");
   const [msg, setMsg] = useState("");
 
-  function submit() {
-    if (current !== user.pin) { setMsg("Current PIN is incorrect."); return; }
+  async function submit() {
+    if (!/^\d{4}$/.test(current)) { setMsg("Current PIN must be exactly 4 digits."); return; }
     if (!/^\d{4}$/.test(next)) { setMsg("New PIN must be exactly 4 digits."); return; }
     if (next !== confirm) { setMsg("New PIN and confirmation don't match."); return; }
-    onSave(next);
+    const result = await onSave(current, next);
+    if (result?.ok) return;
+    setMsg(result?.message || "Unable to change PIN.");
   }
 
   return (
@@ -1301,12 +1349,8 @@ export default function App() {
 
     let empList;
     if (healthy) {
-      let empRows = await sbSelect("employees", "?select=*");
-      if (empRows && empRows.length === 0) {
-        await sbUpsert("employees", SEED_EMPLOYEES);
-        empRows = SEED_EMPLOYEES;
-      }
-      empList = sortEmployees(empRows || SEED_EMPLOYEES);
+      const empRows = await sbSelect("employees", "?select=id,name,role,active");
+      empList = sortEmployees(empRows || []);
     } else {
       empList = sortEmployees(SEED_EMPLOYEES);
     }
@@ -1503,25 +1547,39 @@ export default function App() {
     });
   }, [persist]);
 
-  const addEmployee = useCallback((name, role, pinInput) => {
+  const addEmployee = useCallback(async (name, role, pinInput) => {
     const finalPin = /^\d{4}$/.test(pinInput || "") ? pinInput : genPin();
-    const newEmp = { id: uid(), name, role, pin: finalPin, active: true };
-    setEmployees((prev) => {
-      const updated = sortEmployees([...prev, newEmp]);
-      persist(sbUpsert("employees", [newEmp]));
-      return updated;
+    const id = uid();
+    const { data, error } = await callRpc("create_employee_with_pin", {
+      p_id: id,
+      p_name: name,
+      p_role: role,
+      p_pin: finalPin,
     });
-    return newEmp;
-  }, [persist]);
+    if (error || !data) {
+      alert(error?.message || "Unable to create employee.");
+      return null;
+    }
+    const created = Array.isArray(data) ? data[0] : data;
+    setEmployees((prev) => sortEmployees([...prev, created]));
+    return created;
+  }, []);
 
-  const setPin = useCallback((id, newPin) => {
-    setEmployees((prev) => {
-      const updated = prev.map((e) => (e.id === id ? { ...e, pin: newPin } : e));
-      const changed = updated.find((e) => e.id === id);
-      persist(sbUpsert("employees", [changed]));
-      return updated;
+  const setPin = useCallback(async (id, newPin) => {
+    if (!/^\d{4}$/.test(newPin || "")) {
+      alert("PIN must be exactly 4 digits.");
+      return false;
+    }
+    const { data, error } = await callRpc("admin_change_employee_pin", {
+      p_employee_id: id,
+      p_new_pin: newPin,
     });
-  }, [persist]);
+    if (error || data !== true) {
+      alert(error?.message || "Unable to change PIN.");
+      return false;
+    }
+    return true;
+  }, []);
 
   const changeRole = useCallback((id, newRole) => {
      if (newRole !== "admin" && newRole !== "tasker") return;
@@ -1562,11 +1620,22 @@ export default function App() {
     });
   }, [persist]);
 
-  const changeOwnPin = useCallback((newPin) => {
-    if (!currentUser) return;
-    setPin(currentUser.id, newPin);
+  const changeOwnPin = useCallback(async (currentPin, newPin) => {
+    if (!currentUser) return { ok: false, message: "No signed-in user." };
+
+    const { employee, error: verifyError } = await verifyEmployeePin(currentUser.id, currentPin);
+    if (verifyError) return { ok: false, message: "Unable to verify your current PIN." };
+    if (!employee) return { ok: false, message: "Current PIN is incorrect." };
+
+    const { data, error } = await callRpc("change_employee_pin", {
+      p_employee_id: currentUser.id,
+      p_new_pin: newPin,
+    });
+    if (error || data !== true) return { ok: false, message: error?.message || "Unable to change PIN." };
+
     setShowChangePin(false);
-  }, [currentUser, setPin]);
+    return { ok: true };
+  }, [currentUser]);
 
   const updateBreakMinutes = useCallback((n) => {
     setBreakMinutes(n);
