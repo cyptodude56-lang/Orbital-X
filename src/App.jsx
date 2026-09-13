@@ -7,7 +7,7 @@ import {
 } from "lucide-react";
 
 /* ============================================================================
-   ORBITAL X, team time clock & survey production tracker
+   ORBITAL X — team time clock & survey production tracker
    Single-file artifact. Data lives in a real Postgres database (Supabase),
    shared by everyone who opens this artifact, see the setup block below.
    ============================================================================ */
@@ -752,7 +752,7 @@ function Header({ user, onSignOut, onOpenChangePin, dbOk, onRetryDb, checkingDb 
         <span className="orb-wordmark orb-wordmark-sm">Orbital X</span>
         {!dbOk && (
           <button className="orb-header-storage-warn" onClick={onRetryDb} disabled={checkingDb} title="Changes aren't being saved. Tap to retry.">
-            <RefreshCw size={12} /> {checkingDb ? "Checking…" : "Not saving, retry"}
+            <RefreshCw size={12} /> {checkingDb ? "Checking…" : "Not saving — retry"}
           </button>
         )}
       </div>
@@ -848,7 +848,7 @@ function BreakTimer({ breakInfo, now, onEndBreak }) {
   return (
     <div className="orb-break-timer">
       <div className="orb-break-timer-head">
-        <Coffee size={16} /> On break, {fmtHM(elapsedMs)} of {breakInfo.plannedMinutes}m
+        <Coffee size={16} /> On break — {fmtHM(elapsedMs)} of {breakInfo.plannedMinutes}m
         {overMs > 0 ? (
           <span className="orb-badge orb-badge-rose-solid">+{fmtHM(overMs)} over</span>
         ) : (
@@ -927,7 +927,7 @@ function compressImageFile(file) {
   });
 }
 
-function BalanceSubmitCard({ submissions, onSubmit, readOnly, kesRate, paysInPoints }) {
+function BalanceSubmitCard({ submissions, onSubmit, readOnly, kesRate }) {
   const now = Date.now();
   const todayKey = localDateKey(new Date(now).toISOString());
   const todaySubmission = sortedSubmissions(submissions).filter((s) => s.date === todayKey).slice(-1)[0] || null;
@@ -936,7 +936,7 @@ function BalanceSubmitCard({ submissions, onSubmit, readOnly, kesRate, paysInPoi
   const sorted = sortedSubmissions(submissions).slice().reverse();
 
   const [balance, setBalance] = useState("");
-  const [isPoints, setIsPoints] = useState(!!paysInPoints);
+  const [isPoints, setIsPoints] = useState(false);
   const [screenshot, setScreenshot] = useState(null);
   const [fileName, setFileName] = useState("");
   const [busy, setBusy] = useState(false);
@@ -957,7 +957,7 @@ function BalanceSubmitCard({ submissions, onSubmit, readOnly, kesRate, paysInPoi
       setScreenshot(dataUri);
       setFileName(file.name);
     } catch (err) {
-      setError("Couldn't read that image, try a different file.");
+      setError("Couldn't read that image — try a different file.");
     }
     setBusy(false);
   }
@@ -1064,7 +1064,7 @@ function BalanceSubmitCard({ submissions, onSubmit, readOnly, kesRate, paysInPoi
 
           <label className="orb-points-toggle">
             <input type="checkbox" checked={isPoints} onChange={(e) => { setIsPoints(e.target.checked); setOcrState("idle"); }} />
-            This account pays in points, not dollars (like Survey Junkie), divide by 100
+            This account pays in points, not dollars (like Survey Junkie) — divide by 100
           </label>
           {isPoints && !isNaN(parsedBalance) && (
             <div className="orb-hint">{balance} points \u2192 {fmtMoney(parsedBalance / 100)}</div>
@@ -1082,7 +1082,7 @@ function BalanceSubmitCard({ submissions, onSubmit, readOnly, kesRate, paysInPoi
                 )}
                 {ocrState === "mismatch" && (
                   <span className="orb-badge orb-badge-rose-solid">
-                    Didn't find {balance} in the screenshot{ocrFound.length ? `, saw ${ocrFound.slice(0, 3).join(", ")}` : ""}. Double-check before submitting.
+                    Didn't find {balance} in the screenshot{ocrFound.length ? ` — saw ${ocrFound.slice(0, 3).join(", ")}` : ""}. Double-check before submitting.
                   </span>
                 )}
                 {ocrState === "error" && (
@@ -1253,7 +1253,7 @@ function TimeClockTab({ sessions, breakMinutes, onClockIn, onClockOut, onStartBr
         </table>
       )}
 
-      <BalanceSubmitCard submissions={balanceSubmissions} onSubmit={onSubmitBalance} readOnly={readOnly} kesRate={kesRate} paysInPoints={user.pays_in_points} />
+      <BalanceSubmitCard submissions={balanceSubmissions} onSubmit={onSubmitBalance} readOnly={readOnly} kesRate={kesRate} />
     </div>
   );
 }
@@ -1535,7 +1535,7 @@ function TaskLogTab({ taskLogs, onToggleCell, onDuplicateWeeks, readOnly }) {
           </button>
         ))}
       </div>
-      <div className="orb-subhead">{fmtDayHeading(selectedDate)}, {filledCount} of 100 marked</div>
+      <div className="orb-subhead">{fmtDayHeading(selectedDate)} — {filledCount} of 100 marked</div>
       <div className="orb-task-grid-wrap">
         <table className="orb-task-grid">
           <thead>
@@ -1720,7 +1720,7 @@ function OverviewTab({ employees, timeLogs, surveys, balanceSubmissions }) {
 
 /* ---------------------------------- Admin: Employees ---------------------------------- */
 
-function EmployeesTab({ employees, onAdd, onSetPin, onToggleActive, onTogglePaysInPoints, onDelete, onChangeRole }) {
+function EmployeesTab({ employees, onAdd, onSetPin, onToggleActive, onDelete, onChangeRole }) {
   const [name, setName] = useState("");
   const [role, setRole] = useState("tasker");
   const [pin, setPin] = useState(genPin());
@@ -1787,7 +1787,7 @@ function EmployeesTab({ employees, onAdd, onSetPin, onToggleActive, onTogglePays
       <div className="orb-subhead">Existing employees</div>
       <div className="orb-hint">Use the controls below to manage an existing employee. <strong>Change PIN</strong> changes their sign-in PIN without displaying or storing the PIN in the employee table.</div>
       <table className="orb-table">
-        <thead><tr><th>Name</th><th>Role</th><th>Status</th><th>Pay Type</th><th>Actions</th></tr></thead>
+        <thead><tr><th>Name</th><th>Role</th><th>Status</th><th>Actions</th></tr></thead>
         <tbody>
           {employees.map((e) => {
             const isLastAdmin = e.role === "admin" && e.active && adminCount <= 1;
@@ -1813,12 +1813,6 @@ function EmployeesTab({ employees, onAdd, onSetPin, onToggleActive, onTogglePays
                     <span className={`orb-badge ${e.active ? "orb-badge-live" : "orb-badge-muted"}`}>
                       {e.active ? "Active" : "Inactive"}
                     </span>
-                  </td>
-                  <td>
-                    <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12.5 }}>
-                      <input type="checkbox" checked={!!e.pays_in_points} onChange={() => onTogglePaysInPoints(e.id)} />
-                      Points-based
-                    </label>
                   </td>
                   <td className="orb-row-actions">
                     <button className="orb-btn orb-btn-primary orb-btn-sm" onClick={() => startPinEdit(e)}>
@@ -2633,7 +2627,7 @@ function AdminEvaluationsTab({ employees, timeLogs, surveys }) {
 
   return (
     <div className="orb-panel">
-      <div className="orb-hint">{weekLabel(now)}, resets automatically each week.</div>
+      <div className="orb-hint">{weekLabel(now)} — resets automatically each week.</div>
       <div className="orb-stat-row">
         <StatTile label="Total taskers" value={taskers.length} tone="neutral" />
         <StatTile label="Total hours logged" value={totalHours.toFixed(1)} tone="amber" />
@@ -2787,7 +2781,6 @@ function AdminView({ user, employees, timeLogs, surveys, shifts, taskLogs, accou
             onAdd={actions.addEmployee}
             onSetPin={actions.setPin}
             onToggleActive={actions.toggleActive}
-            onTogglePaysInPoints={actions.togglePaysInPoints}
             onDelete={actions.deleteEmployee}
             onChangeRole={actions.changeRole}
           />
@@ -3145,17 +3138,6 @@ export default function App() {
     });
   }, [persist]);
 
-  // [ADDED] Marks an employee's account as points-based (like Survey Junkie), so
-  // their balance submission form defaults to dividing the typed value by 100.
-  const togglePaysInPoints = useCallback((id) => {
-    setEmployees((prev) => {
-      const updated = prev.map((e) => (e.id === id ? { ...e, pays_in_points: !e.pays_in_points } : e));
-      const changed = updated.find((e) => e.id === id);
-      persist(sbUpsert("employees", [changed]));
-      return updated;
-    });
-  }, [persist]);
-
   // [ADDED] Admin can change any employee's role between Admin and Tasker.
   const changeRole = useCallback((id, newRole) => {
     if (newRole !== "admin" && newRole !== "tasker") return;
@@ -3427,7 +3409,7 @@ export default function App() {
               breakMinutes={breakMinutes}
               kesRate={kesRate}
               actions={{
-                addEmployee, setPin, toggleActive, togglePaysInPoints, changeRole, deleteEmployee, editSession, deleteSession, updateBreakMinutes, updateKesRate,
+                addEmployee, setPin, toggleActive, changeRole, deleteEmployee, editSession, deleteSession, updateBreakMinutes, updateKesRate,
                 clockIn, clockOut, startBreak, endBreak, submitBalance,
                 addShift, deleteShift, editShift, addEarning, deleteEarning, addAccount, renameAccount, deleteAccount, reorderAccount,
               }}
