@@ -179,7 +179,7 @@ async function createScreenshotSignedUrl(path, expiresIn = 3600) {
   });
   if (!res.ok) return null;
   const data = await res.json();
-  return data?.signedURL || data?.signedUrl || null;
+  return signed.startsWith("http") ? signed : `${SB_URL}${signed}`;
 }
 
 // [ADDED] RPC helper for PIN operations that must happen server-side.
