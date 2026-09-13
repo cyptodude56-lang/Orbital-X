@@ -14,8 +14,7 @@ import {
 
 // The Orbital X mark, embedded as a data URI so the logo renders with zero
 // external dependencies (no network fetch needed to show the brand).
-const ORBIT_LOGO = `${import.meta.env.BASE_URL}logo.png`;
-/* ─── Connect your database ──────────────────────────────────────────────
+const ORBIT_LOGO = `${import.meta.env.BASE_URL}logo.png`;/* ─── Connect your database ──────────────────────────────────────────────
    1. Create a project at https://supabase.com (no credit card needed).
    2. Open the SQL Editor in that project and run the setup script provided
       alongside this file.
@@ -178,6 +177,8 @@ async function createScreenshotSignedUrl(path, expiresIn = 3600) {
   });
   if (!res.ok) return null;
   const data = await res.json();
+  const signed = data?.signedURL || data?.signedUrl || null;
+  if (!signed) return null;
   return signed.startsWith("http") ? signed : `${SB_URL}${signed}`;
 }
 
