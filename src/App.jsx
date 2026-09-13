@@ -1124,7 +1124,7 @@ function BalanceSubmitCard({ submissions, onSubmit, readOnly, kesRate, paysInPoi
   );
 }
 
-function TimeClockTab({ sessions, breakMinutes, onClockIn, onClockOut, onStartBreak, onEndBreak, balanceSubmissions, onSubmitBalance, readOnly, kesRate }) {
+function TimeClockTab({ user, sessions, breakMinutes, onClockIn, onClockOut, onStartBreak, onEndBreak, balanceSubmissions, onSubmitBalance, readOnly, kesRate }) {
   const [note, setNote] = useState("");
   const [location, setLocation] = useState("onsite");
   const [tick, setTick] = useState(Date.now());
@@ -1618,6 +1618,7 @@ function TaskerView({ user, sessions, surveys, shifts, taskLogs, breakMinutes, b
       </div>
       {tab === "clock" && (
         <TimeClockTab
+          user={user}
           sessions={sessions}
           breakMinutes={breakMinutes}
           onClockIn={onClockIn}
