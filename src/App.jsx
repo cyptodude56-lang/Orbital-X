@@ -2975,10 +2975,15 @@ export default function App() {
         }
       )
       .subscribe((status) => {
+        console.log("Orbital X time_logs Realtime status:", status);
+
         if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
-          console.warn("Orbital X Realtime connection unavailable:", status);
+          console.warn(
+            "Orbital X Realtime time-log connection unavailable:",
+            status
+          );
         }
-      });
+  });
 
     return () => {
       supabase.removeChannel(channel);
