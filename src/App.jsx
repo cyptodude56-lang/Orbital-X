@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
-import { supabase } from "./lib/supabase";
+import { createClient } from "@supabase/supabase-js";
 import {
   Clock, LogIn, LogOut, CheckCircle2, XCircle, Users, ClipboardList,
   BarChart3, KeyRound, Plus, Trash2, ArrowLeft, RefreshCw, Pencil,
@@ -34,6 +34,13 @@ const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || "";
 const DB_CONFIGURED = /^https:\/\/.+\.supabase\.co\/?$/.test(SUPABASE_URL.trim()) && SUPABASE_ANON_KEY.trim().length > 20;
 const SB_URL = SUPABASE_URL.trim().replace(/\/$/, "");
 const SB_KEY = SUPABASE_ANON_KEY.trim();
+
+// [ADDED] Realtime client — used only for live postgres_changes subscriptions.
+// Every read/write in this file still goes through the plain-fetch REST
+// helpers below (sbSelect/sbUpsert/sbDelete/callRpc); this client's only job
+// is the WebSocket connection Realtime needs, so we don't hand-roll the
+// Phoenix channel protocol ourselves.
+const supabase = DB_CONFIGURED ? createClient(SB_URL, SB_KEY) : null;
 
 const DEFAULT_BREAK_MINUTES = 30;
 const DEFAULT_KES_RATE = 125; // approximate USD→KES rate; admin can adjust in Settings
@@ -301,7 +308,7 @@ function weekLabel(d) {
   const sameMonth = s.getMonth() === e.getMonth();
   const sStr = s.toLocaleDateString("en-US", optsFull);
   const eStr = sameMonth ? String(e.getDate()) : e.toLocaleDateString("en-US", optsFull);
-  return `Week of ${sStr}\u2013${eStr}, ${e.getFullYear()}`;
+  return `Week of ${sStr}–${eStr}, ${e.getFullYear()}`;
 }
 function isSameLocalDay(a, b) {
   const da = new Date(a), db = new Date(b);
@@ -498,10 +505,10 @@ async function verifyBalanceScreenshot(dataUri, typedValue) {
 // Bounds are treated as contiguous (no gap between $60 and $61, etc.) so a
 // fractional amount like $60.50 still falls cleanly into the $61–$80 tier.
 const CUT_TIERS = [
-  { upTo: 60, rate: 0.35, label: "$0\u2013$60" },
-  { upTo: 80, rate: 0.40, label: "$61\u2013$80" },
-  { upTo: 100, rate: 0.45, label: "$81\u2013$100" },
-  { upTo: 149, rate: 0.50, label: "$101\u2013$149" },
+  { upTo: 60, rate: 0.35, label: "$0–$60" },
+  { upTo: 80, rate: 0.40, label: "$61–$80" },
+  { upTo: 100, rate: 0.45, label: "$81–$100" },
+  { upTo: 149, rate: 0.50, label: "$101–$149" },
   { upTo: Infinity, rate: 0.60, label: "$150+" },
 ];
 function cutTierFor(amount) {
@@ -872,7 +879,7 @@ function BreakChip({ b, i, now }) {
   return (
     <span className="orb-break-chip">
       <span className={`orb-dot ${dotClass}`} />
-      Break {i + 1}: {fmtTime(b.start)}{b.end ? `\u2013${fmtTime(b.end)}` : " (in progress)"} · {fmtHM(breakMs(b, now))}
+      Break {i + 1}: {fmtTime(b.start)}{b.end ? `–${fmtTime(b.end)}` : " (in progress)"} · {fmtHM(breakMs(b, now))}
       {b.end && (adherence === "over"
         ? <span className="orb-badge orb-badge-rose-solid orb-badge-tiny">Over</span>
         : <span className="orb-badge orb-badge-teal-solid orb-badge-tiny">On time</span>)}
@@ -1036,7 +1043,7 @@ function BalanceSubmitCard({ submissions, onSubmit, readOnly, kesRate }) {
         </tbody>
       </table>
       <div className="orb-hint">
-        Payout tiers: {CUT_TIERS.map((t) => `${t.label} \u2192 ${Math.round(t.rate * 100)}%`).join(" · ")}. Based on the total earned for that period, the tier applies to the whole amount.
+        Payout tiers: {CUT_TIERS.map((t) => `${t.label} → ${Math.round(t.rate * 100)}%`).join(" · ")}. Based on the total earned for that period, the tier applies to the whole amount.
       </div>
 
       {!readOnly && (
@@ -1068,7 +1075,7 @@ function BalanceSubmitCard({ submissions, onSubmit, readOnly, kesRate }) {
             This account pays in points, not dollars (like Survey Junkie) — divide by 100
           </label>
           {isPoints && !isNaN(parsedBalance) && (
-            <div className="orb-hint">{balance} points \u2192 {fmtMoney(parsedBalance / 100)}</div>
+            <div className="orb-hint">{balance} points → {fmtMoney(parsedBalance / 100)}</div>
           )}
 
           {screenshot && (
@@ -1111,7 +1118,7 @@ function BalanceSubmitCard({ submissions, onSubmit, readOnly, kesRate }) {
                 <span>{fmtDayHeading(s.date)}</span>
                 <span className="orb-num">
                   {fmtMoney(s.balance)} balance
-                  {s.wasPoints && <span className="orb-hist-note"> ({s.rawValue} pts \u00f7 100)</span>}
+                  {s.wasPoints && <span className="orb-hist-note"> ({s.rawValue} pts ÷ 100)</span>}
                 </span>
                 <span className="orb-num">{earned === null ? "baseline" : fmtMoney(earned)}</span>
                 {s.ocrStatus === "match" && <CheckCircle2 size={13} className="orb-verify-icon-ok" />}
@@ -1440,7 +1447,7 @@ function ShiftRow({ shift }) {
       <span className="orb-shift-date">{fmtDayHeading(shift.date)}</span>
       <span className="orb-badge orb-badge-tiny orb-shift-badge">{isNight ? "Night shift" : "Day shift"}</span>
       {(shift.startTime || shift.endTime) && (
-        <span className="orb-shift-time">{shift.startTime || "—"}{"\u2013"}{shift.endTime || "—"}</span>
+        <span className="orb-shift-time">{shift.startTime || "—"}{"–"}{shift.endTime || "—"}</span>
       )}
       {shift.notes && <span className="orb-shift-notes">{shift.notes}</span>}
     </div>
@@ -2240,7 +2247,7 @@ function AdminScheduleTab({ employees, shifts, onAddShift, onDeleteShift, onEdit
               </div>
               <span className="orb-shift-date">{fmtDayHeading(s.date)}</span>
               <span className="orb-badge orb-badge-tiny orb-shift-badge">{s.empName}</span>
-              {(s.startTime || s.endTime) && <span className="orb-shift-time">{s.startTime || "—"}{"\u2013"}{s.endTime || "—"}</span>}
+              {(s.startTime || s.endTime) && <span className="orb-shift-time">{s.startTime || "—"}{"–"}{s.endTime || "—"}</span>}
               {s.notes && <span className="orb-shift-notes">{s.notes}</span>}
               <button className="orb-icon-btn orb-icon-btn-danger" onClick={() => onDeleteShift(s.employeeId, s.id)} aria-label="Remove shift"><Trash2 size={13} /></button>
             </div>
@@ -2258,7 +2265,7 @@ function AdminScheduleTab({ employees, shifts, onAddShift, onDeleteShift, onEdit
               {s.shiftType === "night" ? <Moon size={15} /> : <Sun size={15} />}
               <span className="orb-shift-date">{fmtDayHeading(s.date)}</span>
               <span className="orb-badge orb-badge-tiny orb-shift-badge">{s.empName}</span>
-              {(s.startTime || s.endTime) && <span className="orb-shift-time">{s.startTime || "—"}{"\u2013"}{s.endTime || "—"}</span>}
+              {(s.startTime || s.endTime) && <span className="orb-shift-time">{s.startTime || "—"}{"–"}{s.endTime || "—"}</span>}
             </div>
           ))}
         </div>
@@ -2944,46 +2951,52 @@ export default function App() {
 
   useEffect(() => { loadAll(false); }, [loadAll]);
 
-  // Live balance updates: receive new submissions immediately across all open
-  // Orbital X sessions. The duplicate check prevents the submitting browser
-  // from adding its own record twice because submitBalance already updates local state.
+  // [ADDED] Live updates for balance_submissions: instead of the tasker or
+  // admin having to refresh the page, a new row inserted anywhere (by any
+  // device signed in as any employee) streams in over this one subscription
+  // and is merged into the same `balanceSubmissions` state that loadAll()
+  // populates. Every screen that shows earnings (the tasker's own Earnings
+  // card, the admin Overview tally, admin Tasker View) derives its numbers
+  // from that state at render time, so they update automatically — no
+  // separate "recalculate" step is needed once the row lands in state.
   useEffect(() => {
-    if (!DB_CONFIGURED || !supabase) return undefined;
+    if (!supabase) return;
 
     const channel = supabase
-      .channel("orbital-x-balance-submissions")
+      .channel("balance_submissions_live")
       .on(
         "postgres_changes",
         { event: "INSERT", schema: "public", table: "balance_submissions" },
-        async (payload) => {
-          const row = payload.new;
-          if (!row || !row.id || !row.employee_id) return;
-
-          const record = balanceFromRow(row);
-          if (record.screenshotPath) {
-            record.screenshot = await createScreenshotSignedUrl(record.screenshotPath);
-          }
-
+        (payload) => {
+          const record = balanceFromRow(payload.new);
           setBalanceSubmissions((prev) => {
-            const current = prev[record.employeeId] || [];
-            if (current.some((item) => item.id === record.id)) return prev;
-            return {
-              ...prev,
-              [record.employeeId]: [...current, record],
-            };
+            const existing = prev[record.employeeId] || [];
+            // Skip rows we already have — most often our own optimistic
+            // insert from submitBalance(), echoed back by Realtime a moment
+            // later. Without this check the submitter would see their own
+            // entry twice.
+            if (existing.some((s) => s.id === record.id)) return prev;
+            return { ...prev, [record.employeeId]: [...existing, record] };
           });
+          // The row lists a storage path, not a viewable URL — fetch the
+          // signed URL the same way loadAll() does, then patch it in once
+          // it resolves so the screenshot preview isn't left blank.
+          if (record.screenshotPath) {
+            createScreenshotSignedUrl(record.screenshotPath).then((url) => {
+              if (!url) return;
+              setBalanceSubmissions((prev) => {
+                const list = prev[record.employeeId] || [];
+                const idx = list.findIndex((s) => s.id === record.id);
+                if (idx === -1) return prev;
+                const updated = list.slice();
+                updated[idx] = { ...updated[idx], screenshot: url };
+                return { ...prev, [record.employeeId]: updated };
+              });
+            });
+          }
         }
       )
-      .subscribe((status) => {
-        console.log("Orbital X time_logs Realtime status:", status);
-
-        if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
-          console.warn(
-            "Orbital X Realtime time-log connection unavailable:",
-            status
-          );
-        }
-  });
+      .subscribe();
 
     return () => {
       supabase.removeChannel(channel);
@@ -3516,6 +3529,8 @@ export default function App() {
  * - Admin PIN reset uses admin_change_employee_pin
  * - Employee list selects only id/name/role/active
  * - Admin Employees supports role changes while protecting the last active admin
+ * - Added a Realtime subscription (via @supabase/supabase-js) on
+ *   balance_submissions so earnings update live without a page refresh
  *
  * [REMOVED / REPLACED]
  * - Plaintext seed PINs from browser code
