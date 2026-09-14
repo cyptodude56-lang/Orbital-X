@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
+import { supabase } from "./lib/supabase";
 import {
   Clock, LogIn, LogOut, CheckCircle2, XCircle, Users, ClipboardList,
   BarChart3, KeyRound, Plus, Trash2, ArrowLeft, RefreshCw, Pencil,
@@ -2942,6 +2943,47 @@ export default function App() {
   }, []);
 
   useEffect(() => { loadAll(false); }, [loadAll]);
+
+  // Live balance updates: receive new submissions immediately across all open
+  // Orbital X sessions. The duplicate check prevents the submitting browser
+  // from adding its own record twice because submitBalance already updates local state.
+  useEffect(() => {
+    if (!DB_CONFIGURED || !supabase) return undefined;
+
+    const channel = supabase
+      .channel("orbital-x-balance-submissions")
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "balance_submissions" },
+        async (payload) => {
+          const row = payload.new;
+          if (!row || !row.id || !row.employee_id) return;
+
+          const record = balanceFromRow(row);
+          if (record.screenshotPath) {
+            record.screenshot = await createScreenshotSignedUrl(record.screenshotPath);
+          }
+
+          setBalanceSubmissions((prev) => {
+            const current = prev[record.employeeId] || [];
+            if (current.some((item) => item.id === record.id)) return prev;
+            return {
+              ...prev,
+              [record.employeeId]: [...current, record],
+            };
+          });
+        }
+      )
+      .subscribe((status) => {
+        if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
+          console.warn("Orbital X Realtime connection unavailable:", status);
+        }
+      });
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, []);
 
   const retryDbBeforeLogin = useCallback(() => { loadAll(true); }, [loadAll]);
 
