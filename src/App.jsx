@@ -1047,6 +1047,7 @@ function BalanceSubmitCard({ submissions, onSubmit, readOnly, kesRate }) {
       </div>
 
       <div className="orb-subhead">Your cut</div>
+      <div className="orb-table-wrap">
       <table className="orb-table orb-cut-table">
         <thead><tr><th></th><th>Earned</th><th>Tier</th><th>Your cut</th></tr></thead>
         <tbody>
@@ -1070,6 +1071,7 @@ function BalanceSubmitCard({ submissions, onSubmit, readOnly, kesRate }) {
           </tr>
         </tbody>
       </table>
+      </div>
       <div className="orb-hint">
         Payout tiers: {CUT_TIERS.map((t) => `${t.label} → ${Math.round(t.rate * 100)}%`).join(" · ")}. Based on the total earned for that period, the tier applies to the whole amount.
       </div>
@@ -1281,6 +1283,7 @@ function TimeClockTab({ sessions, breakMinutes, onClockIn, onClockOut, onStartBr
       {todaySessions.length === 0 ? (
         <div className="orb-empty">No sessions yet today. Clock in when you start working.</div>
       ) : (
+        <div className="orb-table-wrap">
         <table className="orb-table">
           <thead><tr><th>In</th><th>Out</th><th>Where</th><th>Breaks</th><th>Worked</th><th>Note</th></tr></thead>
           <tbody>
@@ -1302,6 +1305,7 @@ function TimeClockTab({ sessions, breakMinutes, onClockIn, onClockOut, onStartBr
             ))}
           </tbody>
         </table>
+        </div>
       )}
 
       <BalanceSubmitCard submissions={balanceSubmissions} onSubmit={onSubmitBalance} readOnly={readOnly} kesRate={kesRate} />
@@ -1385,6 +1389,7 @@ function SurveyLogTab({ liveEntries, importedWeeks, onLog, onDeleteEntry, readOn
       {historyRows.length === 0 ? (
         <div className="orb-empty">No earlier weeks on record yet.</div>
       ) : (
+        <div className="orb-table-wrap">
         <table className="orb-table">
           <thead><tr><th>Week</th><th>Total</th><th>Successful</th><th>Screened out</th><th>Rate</th></tr></thead>
           <tbody>
@@ -1399,6 +1404,7 @@ function SurveyLogTab({ liveEntries, importedWeeks, onLog, onDeleteEntry, readOn
             ))}
           </tbody>
         </table>
+        </div>
       )}
     </div>
   );
@@ -1428,6 +1434,7 @@ function MyHistoryTab({ sessions }) {
       {weeklyMap.length === 0 ? (
         <div className="orb-empty">No sessions recorded yet.</div>
       ) : (
+        <div className="orb-table-wrap">
         <table className="orb-table">
           <thead><tr><th>Week</th><th>Worked</th><th>Break time</th></tr></thead>
           <tbody>
@@ -1436,6 +1443,7 @@ function MyHistoryTab({ sessions }) {
             ))}
           </tbody>
         </table>
+        </div>
       )}
 
       <div className="orb-subhead">Day by day</div>
@@ -1452,6 +1460,7 @@ function MyHistoryTab({ sessions }) {
                   <span>{day.heading}</span>
                   <span className="orb-num">{fmtHM(dayNet)} worked</span>
                 </div>
+                <div className="orb-table-wrap">
                 <table className="orb-table">
                   <thead><tr><th>In</th><th>Out</th><th>Where</th><th>Worked</th><th>Note</th></tr></thead>
                   <tbody>
@@ -1466,6 +1475,7 @@ function MyHistoryTab({ sessions }) {
                     ))}
                   </tbody>
                 </table>
+                </div>
                 {dayBreaks.length > 0 && (
                   <div className="orb-break-history orb-day-breaks">
                     {dayBreaks.map((b, i) => <BreakChip key={b.id} b={b} i={i} now={now} />)}
@@ -1837,6 +1847,7 @@ function EmployeesTab({ employees, onAdd, onSetPin, onToggleActive, onDelete, on
 
       <div className="orb-subhead">Existing employees</div>
       <div className="orb-hint">Use the controls below to manage an existing employee. <strong>Change PIN</strong> changes their sign-in PIN without displaying or storing the PIN in the employee table.</div>
+      <div className="orb-table-wrap">
       <table className="orb-table">
         <thead><tr><th>Name</th><th>Role</th><th>Status</th><th>Actions</th></tr></thead>
         <tbody>
@@ -1944,6 +1955,7 @@ function EmployeesTab({ employees, onAdd, onSetPin, onToggleActive, onDelete, on
           })}
         </tbody>
       </table>
+      </div>
     </div>
   );
 }
@@ -2024,6 +2036,7 @@ function TimeLogsTab({ employees, timeLogs, onSaveSession, onDeleteSession }) {
       {rows.length === 0 ? (
         <div className="orb-empty">No sessions in this range.</div>
       ) : (
+        <div className="orb-table-wrap">
         <table className="orb-table">
           <thead><tr><th>Employee</th><th>Date</th><th>In</th><th>Out</th><th>Where</th><th>Breaks</th><th>Worked</th><th>Note</th><th></th></tr></thead>
           <tbody>
@@ -2079,6 +2092,7 @@ function TimeLogsTab({ employees, timeLogs, onSaveSession, onDeleteSession }) {
             ))}
           </tbody>
         </table>
+        </div>
       )}
     </div>
   );
@@ -2130,6 +2144,7 @@ function SurveyReportsTab({ employees, surveys }) {
       {rows.length === 0 ? (
         <div className="orb-empty">No survey activity on record yet.</div>
       ) : (
+        <div className="orb-table-wrap">
         <table className="orb-table">
           <thead><tr><th>Tasker</th><th>Week</th><th>Total</th><th>Successful</th><th>Screened out</th><th>Rate</th></tr></thead>
           <tbody>
@@ -2145,6 +2160,7 @@ function SurveyReportsTab({ employees, surveys }) {
             ))}
           </tbody>
         </table>
+        </div>
       )}
     </div>
   );
@@ -2515,6 +2531,7 @@ function AdminAccountsTab({ accounts, earnings, onAddEarning, onDeleteEarning, o
       </div>
 
       {view === "byAccount" && (
+        <div className="orb-table-wrap">
         <table className="orb-table">
           <thead><tr><th>Account</th><th>Today</th><th>This week</th><th>This month</th><th>All time</th></tr></thead>
           <tbody>
@@ -2529,10 +2546,12 @@ function AdminAccountsTab({ accounts, earnings, onAddEarning, onDeleteEarning, o
             ))}
           </tbody>
         </table>
+        </div>
       )}
 
       {view === "daily" && (
         dailyRows.length === 0 ? <div className="orb-empty">No daily entries yet.</div> : (
+          <div className="orb-table-wrap">
           <table className="orb-table">
             <thead><tr><th>Date</th><th>Account</th><th>Amount</th><th></th></tr></thead>
             <tbody>
@@ -2548,11 +2567,13 @@ function AdminAccountsTab({ accounts, earnings, onAddEarning, onDeleteEarning, o
               ))}
             </tbody>
           </table>
+          </div>
         )
       )}
 
       {view === "weekly" && (
         weeklyRows.length === 0 ? <div className="orb-empty">No weekly entries yet.</div> : (
+          <div className="orb-table-wrap">
           <table className="orb-table">
             <thead><tr><th>Account</th><th>Week</th><th>Total</th></tr></thead>
             <tbody>
@@ -2565,11 +2586,13 @@ function AdminAccountsTab({ accounts, earnings, onAddEarning, onDeleteEarning, o
               ))}
             </tbody>
           </table>
+          </div>
         )
       )}
 
       {view === "monthly" && (
         monthlyRows.length === 0 ? <div className="orb-empty">No monthly entries yet.</div> : (
+          <div className="orb-table-wrap">
           <table className="orb-table">
             <thead><tr><th>Account</th><th>Month</th><th>Total</th></tr></thead>
             <tbody>
@@ -2582,6 +2605,7 @@ function AdminAccountsTab({ accounts, earnings, onAddEarning, onDeleteEarning, o
               ))}
             </tbody>
           </table>
+          </div>
         )
       )}
 
@@ -2592,6 +2616,7 @@ function AdminAccountsTab({ accounts, earnings, onAddEarning, onDeleteEarning, o
       </div>
       {addAccountMsg && <div className="orb-error-text">{addAccountMsg}</div>}
 
+      <div className="orb-table-wrap">
       <table className="orb-table">
         <thead><tr><th></th><th>Account</th><th></th></tr></thead>
         <tbody>
@@ -2643,6 +2668,7 @@ function AdminAccountsTab({ accounts, earnings, onAddEarning, onDeleteEarning, o
           ))}
         </tbody>
       </table>
+      </div>
     </div>
   );
 }
@@ -2689,6 +2715,7 @@ function AdminEvaluationsTab({ employees, timeLogs, surveys }) {
       {rows.length === 0 ? (
         <div className="orb-empty">No taskers yet.</div>
       ) : (
+        <div className="orb-table-wrap">
         <table className="orb-table">
           <thead><tr><th>Tasker</th><th>Hours logged</th><th>Surveys completed</th><th>Successful</th><th>Success rate</th><th>Surveys/hour</th><th>Performance</th></tr></thead>
           <tbody>
@@ -2708,6 +2735,7 @@ function AdminEvaluationsTab({ employees, timeLogs, surveys }) {
             })}
           </tbody>
         </table>
+        </div>
       )}
     </div>
   );
@@ -3641,8 +3669,8 @@ const CSS = `
      viewport; "Request desktop site" masks it by rendering at a wider,
      zoomed-out canvas where nothing needs to wrap). Those specific rows
      now scroll or wrap internally instead of overflowing (see .orb-tabs
-     and .orb-table below); this just makes sure nothing else can do the
-     same thing to the page as a whole. */
+     and .orb-table-wrap below); this just makes sure nothing else can do
+     the same thing to the page as a whole. */
   overflow-x: hidden;
   background: var(--paper);
   font-variant-numeric: tabular-nums;
@@ -3779,11 +3807,16 @@ const CSS = `
 .orb-empty { color: var(--ink-soft); font-size: 13.5px; padding: 16px; background: #fff; border: 1px dashed var(--line-strong); border-radius: 10px; text-align: center; }
 /* [CHANGED] Several of these tables (Today's sessions: In/Out/Where/Breaks/
    Worked/Note, and similar admin tables) don't fit their columns in a phone
-   width either. display:block turns the table into its own horizontally
-   scrollable box instead of forcing the page to grow — thead/tbody/tr/td
-   keep their normal table display values, so columns still line up, it's
-   just the outer table element that scrolls. */
-.orb-table { display: block; max-width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; width: 100%; border-collapse: collapse; background: #fff; border: 1px solid var(--line); border-radius: 10px; font-size: 13.5px; }
+   width either. Each <table className="orb-table"> is wrapped in a plain
+   <div className="orb-table-wrap"> that scrolls horizontally instead of
+   forcing the page to grow. (Earlier this used display:block directly on
+   the table, but that broke the table's own column layout — the table's
+   border/background box stayed full width while the actual rows shrank to
+   fit their content, leaving a big blank strip beside the data on desktop.
+   Scrolling now lives on the wrapper div instead, so the table itself keeps
+   its normal table layout and columns line up correctly at every width.) */
+.orb-table-wrap { max-width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+.orb-table { width: 100%; border-collapse: collapse; background: #fff; border: 1px solid var(--line); border-radius: 10px; font-size: 13.5px; }
 .orb-table th { text-align: left; background: var(--paper-2); color: var(--ink-soft); font-weight: 600; padding: 9px 12px; font-size: 12px; }
 .orb-table td { padding: 9px 12px; border-top: 1px solid var(--line); }
 .orb-num { font-variant-numeric: tabular-nums; }
