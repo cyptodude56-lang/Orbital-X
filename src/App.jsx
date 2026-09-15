@@ -1140,17 +1140,29 @@ function BalanceSubmitCard({ submissions, onSubmit, readOnly, kesRate }) {
         </>
       )}
 
-      {sorted.length > 0 && sorted[sorted.length - 1]?.screenshot && (
-        <div className="orb-balance-latest-screenshot">
-          <div className="orb-subhead">
-            Latest screenshot
-            {sorted[sorted.length - 1]?.description && (
-              <span className="orb-hist-note"> — {sorted[sorted.length - 1].description}</span>
-            )}
+      {(() => {
+        // `sorted` is newest-first. Walk from the front to find the most
+        // recent submission that actually has a screenshot — the newest
+        // submission overall might be a manual-balance-only entry with no
+        // screenshot, so we can't just grab sorted[0].
+        // (This used to read sorted[sorted.length - 1], which is the
+        // OLDEST submission in this newest-first array — a bug where
+        // "Latest screenshot" showed the very first screenshot ever
+        // submitted instead of the most recent one.)
+        const latestWithScreenshot = sorted.find((s) => s.screenshot);
+        if (!latestWithScreenshot) return null;
+        return (
+          <div className="orb-balance-latest-screenshot">
+            <div className="orb-subhead">
+              Latest screenshot
+              {latestWithScreenshot.description && (
+                <span className="orb-hist-note"> — {latestWithScreenshot.description}</span>
+              )}
+            </div>
+            <img src={latestWithScreenshot.screenshot} alt="Latest saved balance screenshot" className="orb-screenshot-preview" />
           </div>
-          <img src={sorted[sorted.length - 1].screenshot} alt="Latest saved balance screenshot" className="orb-screenshot-preview" />
-        </div>
-      )}
+        );
+      })()}
       {sorted.length > 0 && (
         <div className="orb-balance-history">
           {sorted.slice(0, 7).map((s) => {
