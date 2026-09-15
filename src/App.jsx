@@ -167,6 +167,28 @@ async function sbDelete(table, id) {
   }
 }
 
+// Deletes every row in `table` belonging to one employee (matched on the
+// employee_id column), rather than a single row by its own id. Used to
+// clear an employee's dependent rows (time_logs, survey_entries, shifts,
+// task_logs, balance_submissions) BEFORE deleting the employees row itself
+// — those tables have an employee_id foreign key, so deleting the employee
+// first (leaving dependents behind) is rejected by Postgres with a 409
+// Conflict instead of actually deleting anything.
+async function sbDeleteByEmployee(table, employeeId) {
+  if (!DB_CONFIGURED) return false;
+  try {
+    const res = await fetch(`${SB_URL}/rest/v1/${table}?employee_id=eq.${encodeURIComponent(employeeId)}`, {
+      method: "DELETE",
+      headers: sbHeaders({ Prefer: "return=minimal" }),
+    });
+    if (!res.ok) throw new Error(`delete ${table} (by employee) → ${res.status}`);
+    return true;
+  } catch (e) {
+    console.warn("Orbital X DB delete-by-employee failed:", table, e);
+    return false;
+  }
+}
+
 const BALANCE_BUCKET = "balance-screenshots";
 
 function dataUriToBlob(dataUri) {
@@ -3450,18 +3472,28 @@ export default function App() {
     persist(sbUpsert("employees", [updated.find((e) => e.id === id)]));
   }, [employees, persist]);
 
-  const deleteEmployee = useCallback((id) => {
+  const deleteEmployee = useCallback(async (id) => {
     const target = employees.find((e) => e.id === id);
     if (!target || target.role === "admin") return;
+
+    // time_logs/survey_entries/shifts/task_logs/balance_submissions all
+    // have an employee_id foreign key pointing at employees.id. Deleting
+    // the employees row while those dependents still exist is rejected by
+    // Postgres with a 409 Conflict, so clear them first, then delete the
+    // employee itself.
+    const childTables = ["time_logs", "survey_entries", "shifts", "task_logs", "balance_submissions"];
+    const childResults = await Promise.all(childTables.map((t) => sbDeleteByEmployee(t, id)));
+    const empDeleted = await sbDelete("employees", id);
+    if (!empDeleted || childResults.some((ok) => !ok)) setDbOk(false);
+
     setEmployees((prev) => prev.filter((e) => e.id !== id));
-    persist(sbDelete("employees", id));
     setTimeLogs((prev) => { const next = { ...prev }; delete next[id]; return next; });
     setSurveys((prev) => { const next = { ...prev }; delete next[id]; return next; });
     setShifts((prev) => { const next = { ...prev }; delete next[id]; return next; });
     setTaskLogs((prev) => { const next = { ...prev }; delete next[id]; return next; });
     setBalanceSubmissions((prev) => { const next = { ...prev }; delete next[id]; return next; });
     if (currentUserId === id) setCurrentUserId(null);
-  }, [persist, currentUserId, employees]);
+  }, [currentUserId, employees]);
 
   // [CHANGED] Employees change their own PIN through server-side verification.
   const changeOwnPin = useCallback(async () => {
