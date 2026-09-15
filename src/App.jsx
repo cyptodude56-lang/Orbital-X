@@ -45,6 +45,30 @@ const supabase = DB_CONFIGURED ? createClient(SB_URL, SB_KEY) : null;
 const DEFAULT_BREAK_MINUTES = 30;
 const DEFAULT_KES_RATE = 125; // approximate USD→KES rate; admin can adjust in Settings
 
+// [ADDED] Who's signed in survives a page reload (and closing/reopening the
+// browser) until they explicitly sign out, so a refresh — including the one
+// a browser does automatically after it's been idle — doesn't drop someone
+// mid-shift. localStorage (not sessionStorage) is what makes it survive a
+// closed tab/browser, not just a reload.
+const CURRENT_USER_STORAGE_KEY = "orbitalx_current_user_id";
+function readStoredUserId() {
+  try {
+    return localStorage.getItem(CURRENT_USER_STORAGE_KEY) || null;
+  } catch {
+    // Storage can throw in private-browsing contexts or when blocked —
+    // fall back to "nobody signed in" rather than crash the app.
+    return null;
+  }
+}
+function writeStoredUserId(id) {
+  try {
+    if (id) localStorage.setItem(CURRENT_USER_STORAGE_KEY, id);
+    else localStorage.removeItem(CURRENT_USER_STORAGE_KEY);
+  } catch {
+    // Ignore — worst case the session just won't survive a reload.
+  }
+}
+
 /* ---------------------------------- Seed data ---------------------------------- */
 
 const SEED_EMPLOYEES = [
@@ -2829,7 +2853,11 @@ export default function App() {
   const [accountEarnings, setAccountEarnings] = useState([]);
   const [breakMinutes, setBreakMinutes] = useState(DEFAULT_BREAK_MINUTES);
   const [kesRate, setKesRate] = useState(DEFAULT_KES_RATE);
-  const [currentUserId, setCurrentUserId] = useState(null);
+  // [CHANGED] Initialize from whatever was last stored, so a page reload
+  // (or the tab/browser being closed and reopened) resumes signed in
+  // instead of dropping back to the login screen. The lazy initializer runs
+  // once, synchronously, before the first render.
+  const [currentUserId, setCurrentUserId] = useState(readStoredUserId);
   const [showChangePin, setShowChangePin] = useState(false);
 
   const loadAll = useCallback(async (isRetry) => {
@@ -2950,6 +2978,24 @@ export default function App() {
   }, []);
 
   useEffect(() => { loadAll(false); }, [loadAll]);
+
+  // [ADDED] Keep localStorage in sync whenever who's signed in changes —
+  // covers logging in, signing out, and the auto sign-out below.
+  useEffect(() => {
+    writeStoredUserId(currentUserId);
+  }, [currentUserId]);
+
+  // [ADDED] The stored id might point at an employee who no longer exists
+  // (deleted from another device while this one was closed). Wait until
+  // loadAll() has finished fetching the current employee list, then drop
+  // back to the login screen if the restored session doesn't check out —
+  // same as the existing auto sign-out in deleteEmployee() below.
+  useEffect(() => {
+    if (loading) return;
+    if (currentUserId && !employees.some((e) => e.id === currentUserId)) {
+      setCurrentUserId(null);
+    }
+  }, [loading, employees, currentUserId]);
 
   // [ADDED] Live updates for balance_submissions: instead of the tasker or
   // admin having to refresh the page, a new row inserted anywhere (by any
