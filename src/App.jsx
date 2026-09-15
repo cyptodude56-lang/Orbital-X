@@ -211,7 +211,15 @@ async function createScreenshotSignedUrl(path, expiresIn = 3600) {
   const data = await res.json();
   const signed = data?.signedURL || data?.signedUrl || null;
   if (!signed) return null;
-  return signed.startsWith("http") ? signed : `${SB_URL}${signed}`;
+  if (signed.startsWith("http")) return signed;
+  // The sign endpoint returns a path relative to /storage/v1 (e.g.
+  // "/object/sign/<bucket>/<path>?token=..."), NOT relative to the bare
+  // domain — so it must be joined under /storage/v1, not straight onto
+  // SB_URL. Missing that prefix was producing a 404 (the browser was
+  // requesting https://<project>.supabase.co/object/sign/... instead of
+  // https://<project>.supabase.co/storage/v1/object/sign/...).
+  const relative = signed.startsWith("/") ? signed : `/${signed}`;
+  return `${SB_URL}/storage/v1${relative}`;
 }
 
 // [ADDED] RPC helper for PIN operations that must happen server-side.
