@@ -285,10 +285,10 @@ function shiftFromRow(row) {
   return { id: row.id, employeeId: row.employee_id, date: row.date, shiftType: row.shift_type, startTime: row.start_time || "", endTime: row.end_time || "", notes: row.notes || "" };
 }
 function accountToRow(a) {
-  return { id: a.id, name: a.name, sort_index: a.sortIndex || 0 };
+  return { id: a.id, name: a.name, sort_index: a.sortIndex || 0, group_name: a.groupName || null };
 }
 function accountFromRow(row) {
-  return { id: row.id, name: row.name, sortIndex: row.sort_index || 0 };
+  return { id: row.id, name: row.name, sortIndex: row.sort_index || 0, groupName: row.group_name || "" };
 }
 function earningToRow(e) {
   return { id: e.id, account_name: e.accountName, date: e.date, amount: e.amount };
@@ -433,6 +433,7 @@ function balanceToRow(b) {
     raw_value: b.rawValue != null ? b.rawValue : b.balance,
     was_points: !!b.wasPoints,
     description: b.description || null,
+    account_id: b.accountId || null,
   };
 }
 function balanceFromRow(row) {
@@ -451,12 +452,30 @@ function balanceFromRow(row) {
     ocrText: row.ocr_text || null,
     ocrStatus: row.ocr_status || null,
     description: row.description || "",
+    accountId: row.account_id || null,
   };
 }
-// Earnings are cumulative within each calendar day: today's work is the
-// latest reported balance minus the first reported balance for that day.
-// Every submission remains in history, so multiple submissions on the same
-// day never overwrite each other.
+// Earnings model
+// -----------------------------------------------------------------------
+// Every balance submission can optionally carry an accountId (chosen from
+// a dropdown, e.g. "SurveyJunkie" or "Attapoll"). Accounts can share an
+// admin-set groupName (Admin -> Accounts) when several accounts are really
+// the same running balance pool and should be tracked together.
+//
+// Submissions with NO account tag (including everything submitted before
+// this feature existed) fall back to the original single-pool, per-day
+// first-vs-last calculation, completely unchanged, so historical totals
+// never shift.
+//
+// Submissions WITH an account tag are bucketed per (ISO week, group) into
+// one running chain each: within a week, a group's first submission has no
+// earlier value to diff against, so its full value counts (equivalent to
+// diffing against an implicit $0 anchor -- this also means a lone
+// submission no longer shows as $0 the way it used to under the old
+// model). Every later submission in that same group/week diffs against
+// that group's own most recent submission, wherever it left off, even if
+// other accounts were submitted in between. A new week starts every
+// group's chain over from $0, matching how "This week" already resets.
 function sortedSubmissions(list) {
   return list.slice().sort((a, b) => {
     const at = new Date(a.submittedAt || 0).getTime();
@@ -464,7 +483,7 @@ function sortedSubmissions(list) {
     return at - bt;
   });
 }
-function earningsByDate(submissions) {
+function legacyEarningsByDate(submissions) {
   const groups = new Map();
   sortedSubmissions(submissions).forEach((s) => {
     const dateKey = s.date || localDateKey(s.submittedAt);
@@ -483,12 +502,57 @@ function earningsByDate(submissions) {
   });
   return map;
 }
-function earningsForDay(submissions, dateKey) {
-  const map = earningsByDate(submissions);
+function taggedEarningsByDate(submissions, accounts) {
+  const accountsById = new Map((accounts || []).map((a) => [a.id, a]));
+  // Accounts sharing a non-empty groupName share one chain; an account
+  // with no group set is its own solo group (keyed by its own id, so two
+  // ungrouped accounts never accidentally merge into each other).
+  const groupKeyFor = (accountId) => {
+    const acct = accountsById.get(accountId);
+    if (!acct) return null;
+    return acct.groupName && acct.groupName.trim() ? `g:${acct.groupName.trim().toLowerCase()}` : `a:${acct.id}`;
+  };
+
+  const buckets = new Map();
+  sortedSubmissions(submissions).forEach((s) => {
+    if (!s.accountId) return;
+    const groupKey = groupKeyFor(s.accountId);
+    if (!groupKey) return; // tag points at a deleted/unknown account
+    const dateKey = s.date || localDateKey(s.submittedAt);
+    const weekStartKey = localDateKey(startOfWeek(parseDateKeyLocal(dateKey)).toISOString());
+    const bucketKey = `${weekStartKey}__${groupKey}`;
+    if (!buckets.has(bucketKey)) buckets.set(bucketKey, []);
+    buckets.get(bucketKey).push(s);
+  });
+
+  const map = new Map();
+  buckets.forEach((items) => {
+    let prev = 0;
+    items.forEach((s) => {
+      const balance = Number(s.balance);
+      const contribution = balance - prev;
+      prev = balance;
+      const dateKey = s.date || localDateKey(s.submittedAt);
+      map.set(dateKey, (map.get(dateKey) || 0) + contribution);
+    });
+  });
+  return map;
+}
+function earningsByDate(submissions, accounts) {
+  const tagged = submissions.filter((s) => s.accountId);
+  const untagged = submissions.filter((s) => !s.accountId);
+  const merged = new Map(legacyEarningsByDate(untagged));
+  taggedEarningsByDate(tagged, accounts).forEach((amt, dateKey) => {
+    merged.set(dateKey, (merged.has(dateKey) ? merged.get(dateKey) : 0) + amt);
+  });
+  return merged;
+}
+function earningsForDay(submissions, dateKey, accounts) {
+  const map = earningsByDate(submissions, accounts);
   return map.has(dateKey) ? map.get(dateKey) : null;
 }
-function earningsForWeek(submissions, nowMs) {
-  const map = earningsByDate(submissions);
+function earningsForWeek(submissions, nowMs, accounts) {
+  const map = earningsByDate(submissions, accounts);
   const weekStartKey = localDateKey(startOfWeek(nowMs).toISOString());
   const weekEndKey = localDateKey(endOfWeek(nowMs).toISOString());
   let total = 0, any = false;
@@ -969,12 +1033,11 @@ function compressImageFile(file) {
   });
 }
 
-function BalanceSubmitCard({ submissions, onSubmit, readOnly, kesRate }) {
+function BalanceSubmitCard({ submissions, onSubmit, readOnly, kesRate, accounts }) {
   const now = Date.now();
   const todayKey = localDateKey(new Date(now).toISOString());
-  const todaySubmission = sortedSubmissions(submissions).filter((s) => s.date === todayKey).slice(-1)[0] || null;
-  const todayEarned = earningsForDay(submissions, todayKey);
-  const weekEarned = earningsForWeek(submissions, now);
+  const todayEarned = earningsForDay(submissions, todayKey, accounts);
+  const weekEarned = earningsForWeek(submissions, now, accounts);
   const sorted = sortedSubmissions(submissions).slice().reverse();
 
   const [balance, setBalance] = useState("");
@@ -987,7 +1050,16 @@ function BalanceSubmitCard({ submissions, onSubmit, readOnly, kesRate }) {
   const [ocrFound, setOcrFound] = useState([]);
   const [ocrText, setOcrText] = useState("");
   const [ocrBalance, setOcrBalance] = useState(null);
-  const [description, setDescription] = useState("");
+  const [accountId, setAccountId] = useState("");
+  const sortedAccounts = useMemo(() => (accounts || []).slice().sort((a, b) => a.sortIndex - b.sortIndex), [accounts]);
+  const selectedAccount = sortedAccounts.find((a) => a.id === accountId) || null;
+  // Whether the currently-selected account (or, if there's no account list
+  // yet, any submission) already has an entry today, purely to decide the
+  // button label below ("Update" vs "Submit") — every submit always saves
+  // a brand-new record, it never overwrites an earlier one.
+  const todaySubmissionForSelection = sortedSubmissions(submissions)
+    .filter((s) => s.date === todayKey && (sortedAccounts.length > 0 ? s.accountId === accountId : true))
+    .slice(-1)[0] || null;
 
   async function handleFile(e) {
     const file = e.target.files && e.target.files[0];
@@ -1019,6 +1091,7 @@ function BalanceSubmitCard({ submissions, onSubmit, readOnly, kesRate }) {
   async function submit() {
     const n = parseFloat(balance);
     if (isNaN(n) || n < 0) { setError("Enter the balance shown in your screenshot."); return; }
+    if (sortedAccounts.length > 0 && !accountId) { setError("Choose which account this screenshot is for."); return; }
     const finalBalance = isPoints ? n / 100 : n;
     setBusy(true);
     setError("");
@@ -1032,10 +1105,11 @@ function BalanceSubmitCard({ submissions, onSubmit, readOnly, kesRate }) {
         ocrStatus: ocrState === "idle" ? null : ocrState,
         ocrBalance,
         ocrText,
-        description: description.trim(),
+        accountId: accountId || null,
+        description: selectedAccount ? selectedAccount.name : "",
       });
       if (!result?.ok) throw new Error(result?.error || "Could not save this submission.");
-      setBalance(""); setScreenshot(null); setFileName(""); setError(""); setIsPoints(false); setOcrState("idle"); setOcrFound([]); setOcrText(""); setOcrBalance(null); setDescription("");
+      setBalance(""); setScreenshot(null); setFileName(""); setError(""); setIsPoints(false); setOcrState("idle"); setOcrFound([]); setOcrText(""); setOcrBalance(null); setAccountId("");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not save this submission.");
     } finally {
@@ -1103,15 +1177,18 @@ function BalanceSubmitCard({ submissions, onSubmit, readOnly, kesRate }) {
               value={balance}
               onChange={(e) => { setBalance(e.target.value); setOcrState("idle"); }}
             />
-            <input
-              className="orb-input orb-input-narrow"
-              type="text" maxLength={60}
-              placeholder="Description (e.g. Attapoll, Survey Junkie)"
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-            />
+            {sortedAccounts.length > 0 && (
+              <select
+                className="orb-input orb-input-narrow"
+                value={accountId}
+                onChange={(e) => setAccountId(e.target.value)}
+              >
+                <option value="">Which account?</option>
+                {sortedAccounts.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
+              </select>
+            )}
             <button className="orb-btn orb-btn-primary orb-btn-sm" disabled={busy} onClick={submit}>
-              {todaySubmission ? "Update today" : "Submit"}
+              {todaySubmissionForSelection ? "Update today" : "Submit"}
             </button>
           </div>
 
@@ -1174,7 +1251,7 @@ function BalanceSubmitCard({ submissions, onSubmit, readOnly, kesRate }) {
       {sorted.length > 0 && (
         <div className="orb-balance-history">
           {sorted.slice(0, 7).map((s) => {
-            const earned = earningsForDay(submissions, s.date);
+            const earned = earningsForDay(submissions, s.date, accounts);
             return (
               <div key={s.id} className="orb-balance-row">
                 <span>
@@ -1197,7 +1274,7 @@ function BalanceSubmitCard({ submissions, onSubmit, readOnly, kesRate }) {
   );
 }
 
-function TimeClockTab({ sessions, breakMinutes, onClockIn, onClockOut, onStartBreak, onEndBreak, balanceSubmissions, onSubmitBalance, readOnly, kesRate }) {
+function TimeClockTab({ sessions, breakMinutes, onClockIn, onClockOut, onStartBreak, onEndBreak, balanceSubmissions, onSubmitBalance, readOnly, kesRate, accounts }) {
   const [note, setNote] = useState("");
   const [location, setLocation] = useState("onsite");
   const [tick, setTick] = useState(Date.now());
@@ -1328,7 +1405,7 @@ function TimeClockTab({ sessions, breakMinutes, onClockIn, onClockOut, onStartBr
         </div>
       )}
 
-      <BalanceSubmitCard submissions={balanceSubmissions} onSubmit={onSubmitBalance} readOnly={readOnly} kesRate={kesRate} />
+      <BalanceSubmitCard submissions={balanceSubmissions} onSubmit={onSubmitBalance} readOnly={readOnly} kesRate={kesRate} accounts={accounts} />
     </div>
   );
 }
@@ -1675,7 +1752,7 @@ function TaskLogTab({ taskLogs, onToggleCell, onDuplicateWeeks, readOnly }) {
 
 /* ---------------------------------- Tasker view shell ---------------------------------- */
 
-function TaskerView({ user, sessions, surveys, shifts, taskLogs, breakMinutes, balanceSubmissions, onClockIn, onClockOut, onStartBreak, onEndBreak, onLogSurvey, onDeleteSurvey, onToggleTaskCell, onSubmitBalance, onDuplicateTaskWeeks, readOnly, kesRate }) {
+function TaskerView({ user, sessions, surveys, shifts, taskLogs, breakMinutes, balanceSubmissions, onClockIn, onClockOut, onStartBreak, onEndBreak, onLogSurvey, onDeleteSurvey, onToggleTaskCell, onSubmitBalance, onDuplicateTaskWeeks, readOnly, kesRate, accounts }) {
   const [tab, setTab] = useState("clock");
   const importedWeeks = IMPORTED_SURVEY_HISTORY[user.id] || [];
   return (
@@ -1709,6 +1786,7 @@ function TaskerView({ user, sessions, surveys, shifts, taskLogs, breakMinutes, b
           onSubmitBalance={onSubmitBalance}
           readOnly={readOnly}
           kesRate={kesRate}
+          accounts={accounts}
         />
       )}
       {tab === "surveys" && (
@@ -1726,7 +1804,7 @@ function TaskerView({ user, sessions, surveys, shifts, taskLogs, breakMinutes, b
 
 /* ---------------------------------- Admin: Overview ---------------------------------- */
 
-function OverviewTab({ employees, timeLogs, surveys, balanceSubmissions }) {
+function OverviewTab({ employees, timeLogs, surveys, balanceSubmissions, accounts }) {
   const now = Date.now();
   const weekStart = startOfWeek(now).getTime(), weekEnd = endOfWeek(now).getTime();
   const taskers = employees.filter((e) => e.role !== "admin");
@@ -1749,9 +1827,9 @@ function OverviewTab({ employees, timeLogs, surveys, balanceSubmissions }) {
       if (t >= weekStart && t <= weekEnd) { weekSurveys++; if (e.result === "successful") weekSuccess++; }
     });
     const subs = balanceSubmissions[emp.id] || [];
-    const earnedToday = earningsForDay(subs, todayKey);
+    const earnedToday = earningsForDay(subs, todayKey, accounts);
     if (earnedToday) teamEarnedToday += earnedToday;
-    teamEarnedWeek += earningsForWeek(subs, now);
+    teamEarnedWeek += earningsForWeek(subs, now, accounts);
   });
 
   return (
@@ -1777,8 +1855,8 @@ function OverviewTab({ employees, timeLogs, surveys, balanceSubmissions }) {
           const open = sessions.find((s) => !s.clockOut);
           const onBreak = open && (open.breaks || []).some((b) => !b.end);
           const subs = balanceSubmissions[emp.id] || [];
-          const earnedToday = earningsForDay(subs, todayKey);
-          const earnedWeek = earningsForWeek(subs, now);
+          const earnedToday = earningsForDay(subs, todayKey, accounts);
+          const earnedWeek = earningsForWeek(subs, now, accounts);
           return (
             <div key={emp.id} className="orb-roster-row">
               <span className={`orb-dot ${onBreak ? "orb-dot-amber" : open ? "orb-dot-teal" : "orb-dot-muted"}`} />
@@ -2360,7 +2438,7 @@ function monthLabel(dateStr) {
   return new Date(y, m - 1, 1).toLocaleDateString("en-US", { month: "long", year: "numeric" });
 }
 
-function AdminAccountsTab({ accounts, earnings, onAddEarning, onDeleteEarning, onAddAccount, onRenameAccount, onDeleteAccount, onReorderAccount }) {
+function AdminAccountsTab({ accounts, earnings, onAddEarning, onDeleteEarning, onAddAccount, onRenameAccount, onDeleteAccount, onReorderAccount, onSetAccountGroup }) {
   const now = Date.now();
   const todayKey = localDateKey(new Date(now).toISOString());
   const monthPrefix = todayKey.slice(0, 7);
@@ -2385,6 +2463,27 @@ function AdminAccountsTab({ accounts, earnings, onAddEarning, onDeleteEarning, o
   const [renameDraft, setRenameDraft] = useState("");
   const [renameMsg, setRenameMsg] = useState("");
   const [confirmDeleteId, setConfirmDeleteId] = useState(null);
+  // Draft group-name text per account id, so typing in one row's Group
+  // field doesn't need a round-trip before the input reflects what was
+  // typed. Saved onBlur/Enter — unlike account names, group names don't
+  // need to be unique (that's the whole point: several accounts sharing a
+  // group name is what links their balances into one earnings chain).
+  const [groupDrafts, setGroupDrafts] = useState({});
+  const groupNameFor = (a) => (groupDrafts[a.id] !== undefined ? groupDrafts[a.id] : (a.groupName || ""));
+  const existingGroupNames = useMemo(() => {
+    const set = new Set();
+    accounts.forEach((a) => { if (a.groupName) set.add(a.groupName); });
+    return Array.from(set);
+  }, [accounts]);
+  function saveGroup(a) {
+    const trimmed = (groupDrafts[a.id] !== undefined ? groupDrafts[a.id] : (a.groupName || "")).trim();
+    if (trimmed !== (a.groupName || "")) onSetAccountGroup(a.id, trimmed);
+    setGroupDrafts((prev) => {
+      const next = { ...prev };
+      delete next[a.id];
+      return next;
+    });
+  }
 
   function submit() {
     const n = parseFloat(amount);
@@ -2635,10 +2734,13 @@ function AdminAccountsTab({ accounts, earnings, onAddEarning, onDeleteEarning, o
         <button className="orb-btn orb-btn-primary" onClick={submitNewAccount}><Plus size={15} /> Add account</button>
       </div>
       {addAccountMsg && <div className="orb-error-text">{addAccountMsg}</div>}
+      <div className="orb-hint">
+        Give two or more accounts the same Group to track their tasker-submitted balances as one running total (e.g. two Attapoll accounts). Leave Group blank for an account that tracks on its own.
+      </div>
 
       <div className="orb-table-wrap">
       <table className="orb-table">
-        <thead><tr><th></th><th>Account</th><th></th></tr></thead>
+        <thead><tr><th></th><th>Account</th><th>Group</th><th></th></tr></thead>
         <tbody>
           {sortedAccounts.map((a, i) => (
             <React.Fragment key={a.id}>
@@ -2652,6 +2754,17 @@ function AdminAccountsTab({ accounts, earnings, onAddEarning, onDeleteEarning, o
                   </button>
                 </td>
                 <td>{a.name}</td>
+                <td>
+                  <input
+                    className="orb-input orb-input-narrow"
+                    list="orb-account-group-names"
+                    placeholder="No group"
+                    value={groupNameFor(a)}
+                    onChange={(e) => setGroupDrafts((prev) => ({ ...prev, [a.id]: e.target.value }))}
+                    onBlur={() => saveGroup(a)}
+                    onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); }}
+                  />
+                </td>
                 <td className="orb-row-actions">
                   <button className="orb-btn orb-btn-ghost-dark orb-btn-sm" onClick={() => startRename(a)}>
                     <Pencil size={13} /> Rename
@@ -2674,7 +2787,7 @@ function AdminAccountsTab({ accounts, earnings, onAddEarning, onDeleteEarning, o
               </tr>
               {renameId === a.id && (
                 <tr className="orb-edit-row">
-                  <td colSpan={3}>
+                  <td colSpan={4}>
                     <div className="orb-pin-edit-row">
                       <input className="orb-input" value={renameDraft} onChange={(e) => setRenameDraft(e.target.value)} />
                       <button className="orb-btn orb-btn-primary orb-btn-sm" onClick={() => saveRename(a)}><Check size={13} /> Save</button>
@@ -2688,6 +2801,9 @@ function AdminAccountsTab({ accounts, earnings, onAddEarning, onDeleteEarning, o
           ))}
         </tbody>
       </table>
+      <datalist id="orb-account-group-names">
+        {existingGroupNames.map((n) => <option key={n} value={n} />)}
+      </datalist>
       </div>
     </div>
   );
@@ -2763,7 +2879,7 @@ function AdminEvaluationsTab({ employees, timeLogs, surveys }) {
 
 /* ---------------------------------- Admin: Tasker detail (view-as) ---------------------------------- */
 
-function AdminTaskerViewTab({ employees, timeLogs, surveys, shifts, taskLogs, balanceSubmissions, breakMinutes, kesRate }) {
+function AdminTaskerViewTab({ employees, timeLogs, surveys, shifts, taskLogs, balanceSubmissions, breakMinutes, kesRate, accounts }) {
   const taskers = employees.filter((e) => e.role !== "admin");
   const [empId, setEmpId] = useState(taskers[0]?.id || "");
   const emp = taskers.find((e) => e.id === empId);
@@ -2783,7 +2899,7 @@ function AdminTaskerViewTab({ employees, timeLogs, surveys, shifts, taskLogs, ba
   const weekSuccess = weekEntries.filter((e) => e.result === "successful").length;
 
   const subs = balanceSubmissions[emp.id] || [];
-  const earnedWeek = earningsForWeek(subs, now);
+  const earnedWeek = earningsForWeek(subs, now, accounts);
 
   const noop = () => {};
 
@@ -2815,6 +2931,7 @@ function AdminTaskerViewTab({ employees, timeLogs, surveys, shifts, taskLogs, ba
           taskLogs={taskLogs[emp.id] || []}
           balanceSubmissions={subs}
           breakMinutes={breakMinutes}
+          accounts={accounts}
           onClockIn={noop}
           onClockOut={noop}
           onStartBreak={noop}
@@ -2860,7 +2977,7 @@ function AdminView({ user, employees, timeLogs, surveys, shifts, taskLogs, accou
         ))}
       </nav>
       <div className="orb-body">
-        {tab === "overview" && <OverviewTab employees={employees} timeLogs={timeLogs} surveys={surveys} balanceSubmissions={balanceSubmissions} />}
+        {tab === "overview" && <OverviewTab employees={employees} timeLogs={timeLogs} surveys={surveys} balanceSubmissions={balanceSubmissions} accounts={accounts} />}
         {tab === "myclock" && (
           <TimeClockTab
             sessions={timeLogs[user.id] || []}
@@ -2872,6 +2989,7 @@ function AdminView({ user, employees, timeLogs, surveys, shifts, taskLogs, accou
             balanceSubmissions={balanceSubmissions[user.id] || []}
             onSubmitBalance={(payload) => actions.submitBalance(user.id, payload)}
             kesRate={kesRate}
+            accounts={accounts}
           />
         )}
         {tab === "employees" && (
@@ -2893,10 +3011,10 @@ function AdminView({ user, employees, timeLogs, surveys, shifts, taskLogs, accou
         {tab === "reports" && <SurveyReportsTab employees={employees} surveys={surveys} />}
         {tab === "evaluations" && <AdminEvaluationsTab employees={employees} timeLogs={timeLogs} surveys={surveys} />}
         {tab === "accounts" && (
-          <AdminAccountsTab accounts={accounts} earnings={accountEarnings} onAddEarning={actions.addEarning} onDeleteEarning={actions.deleteEarning} onAddAccount={actions.addAccount} onRenameAccount={actions.renameAccount} onDeleteAccount={actions.deleteAccount} onReorderAccount={actions.reorderAccount} />
+          <AdminAccountsTab accounts={accounts} earnings={accountEarnings} onAddEarning={actions.addEarning} onDeleteEarning={actions.deleteEarning} onAddAccount={actions.addAccount} onRenameAccount={actions.renameAccount} onDeleteAccount={actions.deleteAccount} onReorderAccount={actions.reorderAccount} onSetAccountGroup={actions.setAccountGroup} />
         )}
         {tab === "taskerview" && (
-          <AdminTaskerViewTab employees={employees} timeLogs={timeLogs} surveys={surveys} shifts={shifts} taskLogs={taskLogs} balanceSubmissions={balanceSubmissions} breakMinutes={breakMinutes} kesRate={kesRate} />
+          <AdminTaskerViewTab employees={employees} timeLogs={timeLogs} surveys={surveys} shifts={shifts} taskLogs={taskLogs} balanceSubmissions={balanceSubmissions} breakMinutes={breakMinutes} kesRate={kesRate} accounts={accounts} />
         )}
         {tab === "settings" && <SettingsTab breakMinutes={breakMinutes} onSaveBreakMinutes={actions.updateBreakMinutes} kesRate={kesRate} onSaveKesRate={actions.updateKesRate} />}
       </div>
@@ -3438,7 +3556,7 @@ export default function App() {
     });
   }, [persist]);
 
-  const submitBalance = useCallback(async (empId, { date, balance, screenshot, rawValue, wasPoints, ocrStatus, ocrBalance, ocrText, description }) => {
+  const submitBalance = useCallback(async (empId, { date, balance, screenshot, rawValue, wasPoints, ocrStatus, ocrBalance, ocrText, description, accountId }) => {
     const submittedAt = new Date().toISOString();
     const recordId = uid();
     let screenshotPath = null;
@@ -3460,6 +3578,7 @@ export default function App() {
         ocrText: ocrText || null,
         ocrStatus: ocrStatus || null,
         description: description || "",
+        accountId: accountId || null,
       };
 
       const saved = await sbUpsert("balance_submissions", [balanceToRow(record)]);
@@ -3493,9 +3612,22 @@ export default function App() {
 
   const addAccount = useCallback((name) => {
     setAccounts((prev) => {
-      const newAccount = { id: uid(), name, sortIndex: prev.length };
+      const newAccount = { id: uid(), name, sortIndex: prev.length, groupName: "" };
       persist(sbUpsert("accounts", [accountToRow(newAccount)]));
       return [...prev, newAccount];
+    });
+  }, [persist]);
+
+  // Accounts sharing the same (case-insensitive) groupName are treated as
+  // one running balance pool for the tasker earnings calculation — see
+  // taggedEarningsByDate. An empty groupName just means "no group", i.e.
+  // this account tracks on its own.
+  const setAccountGroup = useCallback((accountId, groupName) => {
+    setAccounts((prev) => {
+      const updated = prev.map((a) => (a.id === accountId ? { ...a, groupName } : a));
+      const changed = updated.find((a) => a.id === accountId);
+      persist(sbUpsert("accounts", [accountToRow(changed)]));
+      return updated;
     });
   }, [persist]);
 
@@ -3585,7 +3717,7 @@ export default function App() {
               actions={{
                 addEmployee, setPin, toggleActive, changeRole, deleteEmployee, editSession, deleteSession, updateBreakMinutes, updateKesRate,
                 clockIn, clockOut, startBreak, endBreak, submitBalance,
-                addShift, deleteShift, editShift, addEarning, deleteEarning, addAccount, renameAccount, deleteAccount, reorderAccount,
+                addShift, deleteShift, editShift, addEarning, deleteEarning, addAccount, renameAccount, deleteAccount, reorderAccount, setAccountGroup,
               }}
             />
           ) : (
@@ -3598,6 +3730,7 @@ export default function App() {
               balanceSubmissions={balanceSubmissions[currentUser.id] || []}
               breakMinutes={breakMinutes}
               kesRate={kesRate}
+              accounts={accounts}
               onClockIn={(location) => clockIn(currentUser.id, location)}
               onClockOut={(note) => clockOut(currentUser.id, note)}
               onStartBreak={() => startBreak(currentUser.id)}
