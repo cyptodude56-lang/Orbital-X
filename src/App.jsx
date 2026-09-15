@@ -424,6 +424,7 @@ function balanceToRow(b) {
     ocr_status: b.ocrStatus || null,
     raw_value: b.rawValue != null ? b.rawValue : b.balance,
     was_points: !!b.wasPoints,
+    description: b.description || null,
   };
 }
 function balanceFromRow(row) {
@@ -441,6 +442,7 @@ function balanceFromRow(row) {
     ocrBalance: row.ocr_balance != null ? Number(row.ocr_balance) : null,
     ocrText: row.ocr_text || null,
     ocrStatus: row.ocr_status || null,
+    description: row.description || "",
   };
 }
 // Earnings are cumulative within each calendar day: today's work is the
@@ -977,6 +979,7 @@ function BalanceSubmitCard({ submissions, onSubmit, readOnly, kesRate }) {
   const [ocrFound, setOcrFound] = useState([]);
   const [ocrText, setOcrText] = useState("");
   const [ocrBalance, setOcrBalance] = useState(null);
+  const [description, setDescription] = useState("");
 
   async function handleFile(e) {
     const file = e.target.files && e.target.files[0];
@@ -1021,9 +1024,10 @@ function BalanceSubmitCard({ submissions, onSubmit, readOnly, kesRate }) {
         ocrStatus: ocrState === "idle" ? null : ocrState,
         ocrBalance,
         ocrText,
+        description: description.trim(),
       });
       if (!result?.ok) throw new Error(result?.error || "Could not save this submission.");
-      setBalance(""); setScreenshot(null); setFileName(""); setError(""); setIsPoints(false); setOcrState("idle"); setOcrFound([]); setOcrText(""); setOcrBalance(null);
+      setBalance(""); setScreenshot(null); setFileName(""); setError(""); setIsPoints(false); setOcrState("idle"); setOcrFound([]); setOcrText(""); setOcrBalance(null); setDescription("");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not save this submission.");
     } finally {
@@ -1089,6 +1093,13 @@ function BalanceSubmitCard({ submissions, onSubmit, readOnly, kesRate }) {
               value={balance}
               onChange={(e) => { setBalance(e.target.value); setOcrState("idle"); }}
             />
+            <input
+              className="orb-input orb-input-narrow"
+              type="text" maxLength={60}
+              placeholder="Which account? (e.g. Attapoll)"
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+            />
             <button className="orb-btn orb-btn-primary orb-btn-sm" disabled={busy} onClick={submit}>
               {todaySubmission ? "Update today" : "Submit"}
             </button>
@@ -1129,7 +1140,12 @@ function BalanceSubmitCard({ submissions, onSubmit, readOnly, kesRate }) {
 
       {sorted.length > 0 && sorted[sorted.length - 1]?.screenshot && (
         <div className="orb-balance-latest-screenshot">
-          <div className="orb-subhead">Latest screenshot</div>
+          <div className="orb-subhead">
+            Latest screenshot
+            {sorted[sorted.length - 1]?.description && (
+              <span className="orb-hist-note"> — {sorted[sorted.length - 1].description}</span>
+            )}
+          </div>
           <img src={sorted[sorted.length - 1].screenshot} alt="Latest saved balance screenshot" className="orb-screenshot-preview" />
         </div>
       )}
@@ -1139,7 +1155,10 @@ function BalanceSubmitCard({ submissions, onSubmit, readOnly, kesRate }) {
             const earned = earningsForDay(submissions, s.date);
             return (
               <div key={s.id} className="orb-balance-row">
-                <span>{fmtDayHeading(s.date)}</span>
+                <span>
+                  {fmtDayHeading(s.date)}
+                  {s.description && <span className="orb-hist-note"> — {s.description}</span>}
+                </span>
                 <span className="orb-num">
                   {fmtMoney(s.balance)} balance
                   {s.wasPoints && <span className="orb-hist-note"> ({s.rawValue} pts ÷ 100)</span>}
@@ -3371,7 +3390,7 @@ export default function App() {
     });
   }, [persist]);
 
-  const submitBalance = useCallback(async (empId, { date, balance, screenshot, rawValue, wasPoints, ocrStatus, ocrBalance, ocrText }) => {
+  const submitBalance = useCallback(async (empId, { date, balance, screenshot, rawValue, wasPoints, ocrStatus, ocrBalance, ocrText, description }) => {
     const submittedAt = new Date().toISOString();
     const recordId = uid();
     let screenshotPath = null;
@@ -3392,6 +3411,7 @@ export default function App() {
         ocrBalance: ocrBalance != null ? Number(ocrBalance) : null,
         ocrText: ocrText || null,
         ocrStatus: ocrStatus || null,
+        description: description || "",
       };
 
       const saved = await sbUpsert("balance_submissions", [balanceToRow(record)]);
@@ -3613,6 +3633,17 @@ const CSS = `
   font-family: 'Inter', -apple-system, sans-serif;
   color: var(--ink);
   min-height: 100vh;
+  width: 100%;
+  /* [ADDED] Belt-and-suspenders: a handful of rows below (tabs, tables)
+     used to be wide enough on a real mobile viewport to push the whole
+     page wider than the screen — visible as a dark sliver of unpainted
+     space down the right edge (this only ever showed up in a real mobile
+     viewport; "Request desktop site" masks it by rendering at a wider,
+     zoomed-out canvas where nothing needs to wrap). Those specific rows
+     now scroll or wrap internally instead of overflowing (see .orb-tabs
+     and .orb-table below); this just makes sure nothing else can do the
+     same thing to the page as a whole. */
+  overflow-x: hidden;
   background: var(--paper);
   font-variant-numeric: tabular-nums;
 }
@@ -3694,7 +3725,15 @@ const CSS = `
 .orb-icon-btn-danger:hover { background: var(--rose-soft); color: var(--rose); }
 
 /* ---- Tabs / sidebar ---- */
-.orb-tabs { display: flex; gap: 4px; margin-bottom: 18px; border-bottom: 1px solid var(--line); }
+/* [CHANGED] On a narrow phone, "Time clock / Survey log / Task log / My
+   schedule / My history" doesn't fit in one row. It used to just overflow
+   the row's box, which (via .orb-app's fix above) is now clipped instead
+   of pushing the page wider — so make the row scroll horizontally on its
+   own instead, with the tabs themselves staying full-size and readable
+   (flex-shrink: 0) rather than getting squeezed. */
+.orb-tabs { display: flex; gap: 4px; margin-bottom: 18px; border-bottom: 1px solid var(--line); overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: none; }
+.orb-tabs::-webkit-scrollbar { display: none; }
+.orb-tabs .orb-tab { flex-shrink: 0; }
 .orb-tab { display: flex; align-items: center; gap: 6px; padding: 10px 14px; background: none; border: none; border-bottom: 2px solid transparent; font-family: inherit; font-weight: 600; font-size: 13.5px; color: var(--ink-soft); cursor: pointer; }
 .orb-tab.active { color: var(--navy); border-bottom-color: var(--amber); }
 
@@ -3738,7 +3777,13 @@ const CSS = `
 /* ---- Tables / lists ---- */
 .orb-subhead { font-weight: 700; font-size: 14.5px; margin: 22px 0 8px; color: var(--navy); }
 .orb-empty { color: var(--ink-soft); font-size: 13.5px; padding: 16px; background: #fff; border: 1px dashed var(--line-strong); border-radius: 10px; text-align: center; }
-.orb-table { width: 100%; border-collapse: collapse; background: #fff; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; font-size: 13.5px; }
+/* [CHANGED] Several of these tables (Today's sessions: In/Out/Where/Breaks/
+   Worked/Note, and similar admin tables) don't fit their columns in a phone
+   width either. display:block turns the table into its own horizontally
+   scrollable box instead of forcing the page to grow — thead/tbody/tr/td
+   keep their normal table display values, so columns still line up, it's
+   just the outer table element that scrolls. */
+.orb-table { display: block; max-width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; width: 100%; border-collapse: collapse; background: #fff; border: 1px solid var(--line); border-radius: 10px; font-size: 13.5px; }
 .orb-table th { text-align: left; background: var(--paper-2); color: var(--ink-soft); font-weight: 600; padding: 9px 12px; font-size: 12px; }
 .orb-table td { padding: 9px 12px; border-top: 1px solid var(--line); }
 .orb-num { font-variant-numeric: tabular-nums; }
@@ -3865,7 +3910,7 @@ const CSS = `
   .orb-body { padding: 14px; }
   .orb-clock-top { flex-direction: column; align-items: center; text-align: center; }
   .orb-header { padding: 10px 14px; }
-  .orb-add-row, .orb-add-row-pin { grid-template-columns: 1fr; }
+  .orb-add-row, .orb-add-row-pin, .orb-earnings-add-row { grid-template-columns: 1fr; }
   .orb-employee-grid { grid-template-columns: 1fr 1fr; }
   .orb-schedule-form { grid-template-columns: 1fr 1fr; }
   .orb-roster-row { flex-wrap: wrap; }
