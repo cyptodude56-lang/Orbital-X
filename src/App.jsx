@@ -1096,7 +1096,7 @@ function BalanceSubmitCard({ submissions, onSubmit, readOnly, kesRate }) {
             <input
               className="orb-input orb-input-narrow"
               type="text" maxLength={60}
-              placeholder="Which account? (e.g. Attapoll)"
+              placeholder="Description (e.g. Attapoll, Survey Junkie)"
               value={description}
               onChange={(e) => setDescription(e.target.value)}
             />
