@@ -794,6 +794,7 @@ function LoginScreen({ employees, onLogin, dbOk, onRetryDb, checkingDb }) {
           <ellipse cx="300" cy="300" rx="120" ry="48" stroke="#F0A93E" strokeOpacity="0.3" strokeWidth="1.5" fill="none" transform="rotate(-18 300 300)" />
         </svg>
       </div>
+      <div className="orb-login-glow" aria-hidden="true" />
 
       <div className="orb-login-card">
         <div className="orb-brand">
@@ -3867,8 +3868,19 @@ const CSS = `
 
 /* ---- Login ---- */
 .orb-login { min-height: 100vh; display: flex; align-items: center; justify-content: center; position: relative; overflow: hidden; padding: 24px; background: radial-gradient(circle at 50% 30%, #16204006 0%, var(--paper) 70%); }
-.orb-login-rings { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; pointer-events: none; }
-.orb-login-card { position: relative; width: 100%; max-width: 420px; background: #fff; border: 1px solid var(--line); border-radius: 16px; padding: 32px; box-shadow: 0 20px 50px -25px rgba(16,24,46,0.25); }
+.orb-login-rings { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; pointer-events: none; animation: orb-rings-spin 100s linear infinite; }
+.orb-login-glow { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
+.orb-login-glow::before, .orb-login-glow::after { content: ""; position: absolute; left: 50%; border-radius: 50%; filter: blur(60px); opacity: 0.4; animation: orb-glow-pulse 7s ease-in-out infinite; }
+.orb-login-glow::before { width: 360px; height: 360px; top: 6%; transform: translateX(-50%); background: radial-gradient(circle, #F0A93E5c 0%, #F0A93E00 70%); }
+.orb-login-glow::after { width: 300px; height: 300px; bottom: 4%; transform: translateX(-50%); background: radial-gradient(circle, #1BB2EB4c 0%, #1BB2EB00 70%); animation-delay: 2.4s; }
+.orb-login-card { position: relative; width: 100%; max-width: 420px; background: #fff; border: 1px solid var(--line); border-radius: 16px; padding: 32px; box-shadow: 0 20px 50px -25px rgba(16,24,46,0.25), 0 0 40px -18px rgba(240,169,62,0.35); animation: orb-card-rise .6s cubic-bezier(.2,.7,.3,1) both, orb-card-float 6s ease-in-out .6s infinite; }
+@keyframes orb-rings-spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+@keyframes orb-glow-pulse { 0%, 100% { opacity: 0.3; transform: translateX(-50%) scale(1); } 50% { opacity: 0.55; transform: translateX(-50%) scale(1.12); } }
+@keyframes orb-card-rise { from { opacity: 0; transform: translateY(18px) scale(.98); } to { opacity: 1; transform: translateY(0) scale(1); } }
+@keyframes orb-card-float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-6px); } }
+@media (prefers-reduced-motion: reduce) {
+  .orb-login-rings, .orb-login-glow::before, .orb-login-glow::after, .orb-login-card { animation: none !important; }
+}
 .orb-brand { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .orb-wordmark { font-weight: 700; font-size: 22px; letter-spacing: -0.01em; color: var(--navy); }
 .orb-wordmark-sm { font-size: 17px; color: #fff; }
