@@ -3313,6 +3313,11 @@ function AdminEvaluationsTab({ employees, timeLogs, surveys }) {
 function AdminTaskerViewTab({ employees, timeLogs, surveys, shifts, taskLogs, balanceSubmissions, breakMinutes, kesRate, accounts }) {
   const taskers = employees.filter((e) => e.role !== "admin");
   const [empId, setEmpId] = useState(taskers[0]?.id || "");
+  // [ADDED] TaskerView's tab is now controlled by its parent (see
+  // AdminView/App), so this embedded read-only preview needs its own
+  // local tab state to hand down — without it TaskerView had no active
+  // tab at all and rendered blank, which is what broke this view.
+  const [previewTab, setPreviewTab] = useState("clock");
   const emp = taskers.find((e) => e.id === empId);
   const now = Date.now();
 
@@ -3363,6 +3368,10 @@ function AdminTaskerViewTab({ employees, timeLogs, surveys, shifts, taskLogs, ba
           balanceSubmissions={subs}
           breakMinutes={breakMinutes}
           accounts={accounts}
+          activeTab={previewTab}
+          onTabChange={setPreviewTab}
+          onSaveProfile={noop}
+          onOpenChangePin={noop}
           onClockIn={noop}
           onClockOut={noop}
           onStartBreak={noop}
@@ -4348,8 +4357,8 @@ html, body { overflow-x: hidden; }
      covers the small transform "lift" (kept a touch quicker than the color
      fade so a hover doesn't feel laggy). Change these two values to speed
      up or slow down every clickable element in the app at once. */
-  --hover-speed: .35s;
-  --hover-speed-fast: .75s;
+  --hover-speed: .3s;
+  --hover-speed-fast: .25s;
   font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Inter', 'Helvetica Neue', Arial, sans-serif;
   color: var(--ink);
   min-height: 100vh;
