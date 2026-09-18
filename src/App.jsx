@@ -3828,37 +3828,28 @@ const CSS = `
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
 
 .orb-app {
-  /* [CHANGED] Dark navy + orange theme. --navy/--navy-2/--navy-3 stay dark
-     (they were already used as dark surfaces: header, sidebar, badges) —
-     only the general-purpose surface/text/border variables flip polarity,
-     since those used to assume a light page (white cards, dark ink). A
-     handful of call sites that used --navy itself as a *text* color on a
-     light card (headings, active tab, links) are updated at their own
-     rules below to use --ink or --amber instead, since --navy is no
-     longer light-safe as foreground text. */
   --navy: #10182E;
   --navy-2: #1A2547;
   --navy-3: #24315C;
-  --amber: #F2A93F;
-  --brand-blue: #38C6F4;
-  --amber-soft: #3A2A12;
-  --teal: #35B79C;
-  --teal-soft: #12332C;
-  --rose: #E2685F;
-  --rose-soft: #3A1E1C;
-  --paper: #0A0E1A;
-  --paper-2: #131C33;
-  --surface: #182448;
-  --ink: #F1F4FB;
-  --ink-soft: #9AA4C6;
-  --line: rgba(255,255,255,0.10);
-  --line-strong: rgba(255,255,255,0.20);
+  --amber: #F0A93E;
+  --brand-blue: #1BB2EB;
+  --amber-soft: #FBE7C4;
+  --teal: #2E9E85;
+  --teal-soft: #DCF0EA;
+  --rose: #D2564E;
+  --rose-soft: #FAE1DE;
+  --paper: #F4F6F9;
+  --paper-2: #E9EDF3;
+  --ink: #171B26;
+  --ink-soft: #5A6178;
+  --line: #DCE2ED;
+  --line-strong: #C5CDDC;
   /* [ADDED] One dial for every hover animation's speed. --hover-speed
      covers color/background/border/opacity/shadow fades; --hover-speed-fast
      covers the small transform "lift" (kept a touch quicker than the color
      fade so a hover doesn't feel laggy). Change these two values to speed
      up or slow down every clickable element in the app at once. */
-  --hover-speed: .38s;
+  --hover-speed: .35s;
   --hover-speed-fast: .75s;
   font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Inter', 'Helvetica Neue', Arial, sans-serif;
   color: var(--ink);
@@ -3874,10 +3865,7 @@ const CSS = `
      and .orb-table-wrap below); this just makes sure nothing else can do
      the same thing to the page as a whole. */
   overflow-x: hidden;
-  background:
-    radial-gradient(ellipse 1200px 600px at 12% -8%, rgba(242,169,63,0.07) 0%, transparent 60%),
-    radial-gradient(ellipse 900px 700px at 100% 105%, rgba(56,198,244,0.05) 0%, transparent 55%),
-    var(--paper);
+  background: var(--paper);
   font-variant-numeric: tabular-nums;
 }
 .orb-app * { box-sizing: border-box; }
@@ -3890,30 +3878,28 @@ const CSS = `
 .orb-login-rings { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; pointer-events: none; animation: orb-rings-spin 100s linear infinite; opacity: 0.7; }
 .orb-login-glow { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
 .orb-login-glow::before, .orb-login-glow::after { content: ""; position: absolute; left: 50%; border-radius: 50%; filter: blur(70px); opacity: 0.32; animation: orb-glow-pulse 7s ease-in-out infinite; }
-.orb-login-glow::before { width: 420px; height: 420px; top: 2%; transform: translateX(-50%); background: radial-gradient(circle, rgba(242,169,63,0.4) 0%, rgba(242,169,63,0) 70%); }
-.orb-login-glow::after { width: 340px; height: 340px; bottom: 0%; transform: translateX(-50%); background: radial-gradient(circle, rgba(56,198,244,0.3) 0%, rgba(56,198,244,0) 70%); animation-delay: 2.4s; }
+.orb-login-glow::before { width: 420px; height: 420px; top: 2%; transform: translateX(-50%); background: radial-gradient(circle, rgba(240,169,62,0.4) 0%, rgba(240,169,62,0) 70%); }
+.orb-login-glow::after { width: 340px; height: 340px; bottom: 0%; transform: translateX(-50%); background: radial-gradient(circle, rgba(27,178,235,0.3) 0%, rgba(27,178,235,0) 70%); animation-delay: 2.4s; }
 /* [CHANGED] The card no longer floats or rises in — it just sits in place
    (per request, "this whole tile holding the user login names" should be
-   static). The ambient rings + glow blobs around it keep animating, toned
-   down along with the card's own shadow — a plain, thin 1px border plus a
-   standard (not glowing) drop shadow reads less "glossy". */
-.orb-login-card { position: relative; width: 100%; max-width: 420px; background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 32px; box-shadow: 0 12px 28px -14px rgba(0,0,0,0.55); }
+   static). The ambient rings + glow blobs around it keep animating. */
+.orb-login-card { position: relative; width: 100%; max-width: 420px; background: #fff; border: 1px solid var(--line); border-radius: 6px; padding: 32px; box-shadow: 0 20px 50px -25px rgba(16,24,46,0.25); }
 @keyframes orb-rings-spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
 @keyframes orb-glow-pulse { 0%, 100% { opacity: 0.4; transform: translateX(-50%) scale(1); } 50% { opacity: 0.65; transform: translateX(-50%) scale(1.12); } }
 @media (prefers-reduced-motion: reduce) {
   .orb-login-rings, .orb-login-glow::before, .orb-login-glow::after { animation: none !important; }
 }
 .orb-brand { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
-.orb-wordmark { font-weight: 700; font-size: 22px; letter-spacing: -0.02em; color: var(--ink); }
+.orb-wordmark { font-weight: 700; font-size: 22px; letter-spacing: -0.02em; color: var(--navy); }
 .orb-wordmark-sm { font-size: 17px; color: #fff; }
 .orb-tagline { color: var(--brand-blue); font-size: 10.5px; font-weight: 700; letter-spacing: 2.5px; text-transform: uppercase; margin: 2px 0 0 44px; }
 .orb-login-sub { color: var(--ink-soft); margin: 6px 0 22px; font-size: 14.5px; }
 
 .orb-employee-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-.orb-employee-tile { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 18px 10px; border: 1px solid var(--line); border-radius: 5px; background: var(--paper-2); cursor: pointer; font-family: inherit; font-size: 14.5px; font-weight: 600; color: var(--ink); position: relative; transition: transform var(--hover-speed-fast) cubic-bezier(.22,.8,.3,1.1), box-shadow var(--hover-speed) ease, border-color var(--hover-speed) ease, background-color var(--hover-speed) ease; }
-.orb-employee-tile:hover { border-color: var(--amber); background: var(--surface); transform: translateY(-3px); box-shadow: 0 6px 14px -8px rgba(0,0,0,0.5); }
+.orb-employee-tile { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 18px 10px; border: 1px solid var(--line); border-radius: 5px; background: var(--paper); cursor: pointer; font-family: inherit; font-size: 14.5px; font-weight: 600; color: var(--ink); position: relative; transition: transform var(--hover-speed-fast) cubic-bezier(.22,.8,.3,1.1), box-shadow var(--hover-speed) ease, border-color var(--hover-speed) ease, background-color var(--hover-speed) ease; }
+.orb-employee-tile:hover { border-color: var(--amber); background: #f5e8cd60; transform: translateY(-3px); }
 .orb-employee-tile:active { transform: translateY(-1px) scale(1.01); }
-.orb-avatar { width: 40px; height: 40px; border-radius: 50%; background: var(--amber); color: #3A2600; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 15px; }
+.orb-avatar { width: 40px; height: 40px; border-radius: 50%; background: var(--navy); color: #fff; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 15px; }
 .orb-avatar-sm { width: 26px; height: 26px; font-size: 12px; }
 
 .orb-pin-panel { display: flex; flex-direction: column; gap: 6px; }
@@ -3930,25 +3916,25 @@ const CSS = `
 .orb-shake { animation: orb-shake .4s; }
 @keyframes orb-shake { 0%,100%{transform:translateX(0)} 25%{transform:translateX(-6px)} 75%{transform:translateX(6px)} }
 
-.orb-banner { border-radius: 5px; padding: 12px 14px; font-size: 13.5px; margin-bottom: 16px; border: 1px solid transparent; }
-.orb-banner-info { background: var(--amber-soft); border-color: rgba(242,169,63,0.28); color: #F5CD8E; }
-.orb-banner-warn { background: var(--rose-soft); border-color: rgba(226,104,95,0.3); color: #F3B0A8; display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
-.orb-link-btn { background: none; border: none; color: var(--amber); font-weight: 600; font-size: 13px; text-decoration: underline; cursor: pointer; padding: 0; margin-top: 8px; font-family: inherit; transition: opacity var(--hover-speed) ease; }
+.orb-banner { border-radius: 5px; padding: 12px 14px; font-size: 13.5px; margin-bottom: 16px; }
+.orb-banner-info { background: var(--amber-soft); color: #6B4A16; }
+.orb-banner-warn { background: var(--rose-soft); color: #7A2E28; display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.orb-link-btn { background: none; border: none; color: var(--navy); font-weight: 600; font-size: 13px; text-decoration: underline; cursor: pointer; padding: 0; margin-top: 8px; font-family: inherit; transition: opacity var(--hover-speed) ease; }
 .orb-link-btn:hover { opacity: 0.75; }
-.orb-link-btn-warn { color: #F3B0A8; margin-top: 0; white-space: nowrap; display: inline-flex; align-items: center; gap: 4px; }
+.orb-link-btn-warn { color: #7A2E28; margin-top: 0; white-space: nowrap; display: inline-flex; align-items: center; gap: 4px; }
 .orb-header-storage-warn { display: inline-flex; align-items: center; gap: 5px; background: var(--rose); color: #fff; border: none; border-radius: 5px; padding: 4px 10px; font-size: 11.5px; font-weight: 600; font-family: inherit; cursor: pointer; }
 .orb-header-storage-warn:disabled { opacity: 0.7; cursor: default; }
 .orb-welcome-pin { font-weight: 700; letter-spacing: 1px; }
 
 /* ---- Header / shell ---- */
 .orb-shell { min-height: 100vh; display: flex; flex-direction: column; }
-.orb-header { background: var(--navy); color: #fff; padding: 12px 20px; display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; position: sticky; top: 0; z-index: 10; border-bottom: 1px solid rgba(242,169,63,0.18); }
+.orb-header { background: var(--navy); color: #fff; padding: 12px 20px; display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; position: sticky; top: 0; z-index: 10; }
 .orb-header-right { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
 .orb-header-clock { font-size: 12.5px; color: #B9C2DA; font-weight: 600; font-variant-numeric: tabular-nums; }
 .orb-header-user { display: flex; align-items: center; gap: 6px; font-size: 13.5px; font-weight: 600; }
 
 .orb-body { flex: 1; padding: 20px; max-width: 1040px; width: 100%; margin: 0 auto; }
-.orb-embedded-tasker { border: 1px solid var(--line); border-radius: 5px; overflow: hidden; background: var(--paper-2); }
+.orb-embedded-tasker { border: 1px solid var(--line); border-radius: 5px; overflow: hidden; background: var(--paper); }
 .orb-embedded-tasker .orb-body { padding: 16px; max-width: none; margin: 0; }
 .orb-embedded-tasker .orb-tabs { padding: 0 2px; }
 .orb-panel { display: flex; flex-direction: column; gap: 6px; }
@@ -3961,10 +3947,10 @@ const CSS = `
 .orb-btn-primary { background: var(--amber); color: #3A2600; }
 .orb-btn-teal { background: var(--teal); color: #fff; }
 .orb-btn-rose { background: var(--rose); color: #fff; }
-.orb-btn-danger { background: var(--surface); color: var(--rose); border-color: var(--rose); }
+.orb-btn-danger { background: #fff; color: var(--rose); border-color: var(--rose); }
 .orb-btn-ghost { background: transparent; color: #fff; border-color: rgba(255,255,255,0.35); }
 .orb-btn-ghost:hover:not(:disabled) { background: rgba(255,255,255,0.08); }
-.orb-btn-ghost-dark { background: transparent; color: var(--ink); border-color: var(--line-strong); }
+.orb-btn-ghost-dark { background: transparent; color: var(--navy); border-color: var(--line-strong); }
 .orb-btn-ghost-dark:hover:not(:disabled) { background: var(--paper-2); }
 .orb-btn-lg { padding: 13px 22px; font-size: 14.5px; }
 .orb-btn-sm { padding: 6px 10px; font-size: 12.5px; }
@@ -3986,10 +3972,10 @@ const CSS = `
 .orb-tabs .orb-tab { flex-shrink: 0; }
 .orb-tab { display: flex; align-items: center; gap: 6px; padding: 10px 14px; background: none; border: none; border-bottom: 2px solid transparent; font-family: inherit; font-weight: 600; font-size: 13.5px; color: var(--ink-soft); cursor: pointer; transition: color var(--hover-speed) ease, border-color var(--hover-speed) ease; }
 .orb-tab:hover { color: var(--ink); }
-.orb-tab.active { color: var(--amber); border-bottom-color: var(--amber); }
+.orb-tab.active { color: var(--navy); border-bottom-color: var(--amber); }
 
 .orb-admin { display: flex; flex: 1; max-width: 1200px; width: 100%; margin: 0 auto; }
-.orb-sidebar { width: 190px; background: var(--navy-2); padding: 18px 10px; display: flex; flex-direction: column; gap: 3px; flex-shrink: 0; border-right: 1px solid var(--line); }
+.orb-sidebar { width: 190px; background: var(--navy-2); padding: 18px 10px; display: flex; flex-direction: column; gap: 3px; flex-shrink: 0; }
 .orb-sidebar-btn { display: flex; align-items: center; gap: 9px; padding: 10px 12px; border-radius: 4px; background: none; border: none; color: #CBD3E8; font-family: inherit; font-weight: 600; font-size: 13.5px; cursor: pointer; text-align: left; transition: background-color var(--hover-speed) ease, color var(--hover-speed) ease, transform var(--hover-speed-fast) ease; }
 .orb-sidebar-btn:hover { background: rgba(255,255,255,0.06); transform: translateX(2px); }
 .orb-sidebar-btn.active { background: var(--amber); color: #3A2600; }
@@ -3997,14 +3983,14 @@ const CSS = `
 
 /* ---- Stats / dial ---- */
 .orb-stat-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; margin: 12px 0 18px; }
-.orb-stat { border: 1px solid var(--line); border-radius: 5px; padding: 12px 14px; background: var(--surface); }
+.orb-stat { border: 1px solid var(--line); border-radius: 5px; padding: 12px 14px; background: #fff; }
 .orb-stat-value { font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Inter', sans-serif; font-size: 24px; font-weight: 700; font-variant-numeric: tabular-nums; letter-spacing: 0.01em; }
 .orb-stat-label { font-size: 12.5px; color: var(--ink-soft); margin-top: 2px; }
-.orb-stat-amber .orb-stat-value { color: var(--amber); }
+.orb-stat-amber .orb-stat-value { color: #A66A12; }
 .orb-stat-teal .orb-stat-value { color: var(--teal); }
 .orb-stat-rose .orb-stat-value { color: var(--rose); }
 
-.orb-clock-top { display: flex; gap: 28px; align-items: center; flex-wrap: wrap; background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 22px; margin-bottom: 6px; }
+.orb-clock-top { display: flex; gap: 28px; align-items: center; flex-wrap: wrap; background: #fff; border: 1px solid var(--line); border-radius: 6px; padding: 22px; margin-bottom: 6px; }
 .orb-dial { position: relative; width: 140px; height: 140px; flex-shrink: 0; }
 .orb-dial-text { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; }
 .orb-dial-primary { font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Inter', sans-serif; font-size: 19px; font-weight: 700; font-variant-numeric: tabular-nums; letter-spacing: 0.01em; }
@@ -4015,20 +4001,20 @@ const CSS = `
 .orb-log-buttons { display: flex; gap: 10px; margin: 4px 0 22px; flex-wrap: wrap; }
 
 /* ---- Breaks ---- */
-.orb-breaks-bar { background: var(--surface); border: 1px solid var(--line); border-radius: 5px; padding: 12px 14px; margin: 6px 0 18px; display: flex; flex-direction: column; gap: 8px; }
-.orb-breaks-status { display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 600; color: var(--ink); }
+.orb-breaks-bar { background: #fff; border: 1px solid var(--line); border-radius: 5px; padding: 12px 14px; margin: 6px 0 18px; display: flex; flex-direction: column; gap: 8px; }
+.orb-breaks-status { display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 600; color: var(--navy); }
 .orb-break-history { display: flex; flex-direction: column; gap: 3px; }
 .orb-break-chip { font-size: 12px; color: var(--ink-soft); }
 .orb-break-timer { display: flex; flex-direction: column; gap: 8px; }
-.orb-break-timer-head { display: flex; align-items: center; gap: 7px; font-weight: 700; font-size: 14px; color: var(--ink); flex-wrap: wrap; }
+.orb-break-timer-head { display: flex; align-items: center; gap: 7px; font-weight: 700; font-size: 14px; color: var(--navy); flex-wrap: wrap; }
 .orb-progress-track { height: 8px; border-radius: 5px; background: var(--paper-2); overflow: hidden; }
 .orb-progress-fill { height: 100%; background: var(--amber); border-radius: 5px; transition: width 1s linear; }
 .orb-progress-fill.over { background: var(--rose); }
 .orb-badge-rose-solid { background: var(--rose); color: #fff; }
 
 /* ---- Tables / lists ---- */
-.orb-subhead { font-weight: 700; font-size: 14.5px; margin: 22px 0 8px; color: var(--ink); }
-.orb-empty { color: var(--ink-soft); font-size: 13.5px; padding: 16px; background: var(--surface); border: 1px dashed var(--line-strong); border-radius: 5px; text-align: center; }
+.orb-subhead { font-weight: 700; font-size: 14.5px; margin: 22px 0 8px; color: var(--navy); }
+.orb-empty { color: var(--ink-soft); font-size: 13.5px; padding: 16px; background: #fff; border: 1px dashed var(--line-strong); border-radius: 5px; text-align: center; }
 /* [CHANGED] Several of these tables (Today's sessions: In/Out/Where/Breaks/
    Worked/Note, and similar admin tables) don't fit their columns in a phone
    width either. Each <table className="orb-table"> is wrapped in a plain
@@ -4040,7 +4026,7 @@ const CSS = `
    Scrolling now lives on the wrapper div instead, so the table itself keeps
    its normal table layout and columns line up correctly at every width.) */
 .orb-table-wrap { max-width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; }
-.orb-table { width: 100%; border-collapse: collapse; background: var(--surface); border: 1px solid var(--line); border-radius: 5px; font-size: 13.5px; }
+.orb-table { width: 100%; border-collapse: collapse; background: #fff; border: 1px solid var(--line); border-radius: 5px; font-size: 13.5px; }
 .orb-table th { text-align: left; background: var(--paper-2); color: var(--ink-soft); font-weight: 600; padding: 9px 12px; font-size: 12px; }
 .orb-table td { padding: 9px 12px; border-top: 1px solid var(--line); }
 /* [CHANGED] Numbers app-wide (stat tiles, clock, table figures, earnings,
@@ -4054,12 +4040,12 @@ const CSS = `
 .orb-note-cell { color: var(--ink-soft); max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 .orb-entry-list { display: flex; flex-direction: column; gap: 6px; }
-.orb-entry-row { display: flex; align-items: center; gap: 10px; background: var(--surface); border: 1px solid var(--line); border-radius: 4px; padding: 8px 12px; font-size: 13.5px; }
+.orb-entry-row { display: flex; align-items: center; gap: 10px; background: #fff; border: 1px solid var(--line); border-radius: 4px; padding: 8px 12px; font-size: 13.5px; }
 .orb-entry-result { font-weight: 600; }
 .orb-entry-time { color: var(--ink-soft); margin-left: auto; font-size: 12.5px; }
 
 .orb-roster { display: flex; flex-direction: column; gap: 6px; }
-.orb-roster-row { display: flex; align-items: center; gap: 10px; background: var(--surface); border: 1px solid var(--line); border-radius: 4px; padding: 9px 12px; font-size: 13.5px; }
+.orb-roster-row { display: flex; align-items: center; gap: 10px; background: #fff; border: 1px solid var(--line); border-radius: 4px; padding: 9px 12px; font-size: 13.5px; }
 .orb-roster-name { font-weight: 600; }
 .orb-roster-status { margin-left: auto; color: var(--ink-soft); font-size: 12.5px; }
 
@@ -4075,7 +4061,7 @@ const CSS = `
 .orb-dot-muted { background: var(--line-strong); }
 
 /* ---- Forms / inputs ---- */
-.orb-input { border: 1px solid var(--line-strong); border-radius: 4px; padding: 9px 11px; font-family: inherit; font-size: 13.5px; background: var(--surface); color: var(--ink); width: 100%; transition: border-color var(--hover-speed) ease; }
+.orb-input { border: 1px solid var(--line-strong); border-radius: 4px; padding: 9px 11px; font-family: inherit; font-size: 13.5px; background: #fff; color: var(--ink); width: 100%; transition: border-color var(--hover-speed) ease; }
 .orb-input:focus { outline: 2px solid var(--amber); outline-offset: 1px; }
 .orb-input-sm { padding: 6px 8px; font-size: 12.5px; }
 .orb-input-pin { width: 90px; text-align: center; letter-spacing: 3px; font-weight: 700; flex: none; }
@@ -4087,25 +4073,25 @@ const CSS = `
 .orb-filter-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 4px; }
 .orb-filter-row .orb-input { width: auto; min-width: 170px; }
 .orb-segment { display: flex; border: 1px solid var(--line-strong); border-radius: 4px; overflow: hidden; }
-.orb-segment button { padding: 8px 12px; background: var(--surface); border: none; border-right: 1px solid var(--line-strong); font-family: inherit; font-size: 12.5px; font-weight: 600; color: var(--ink-soft); cursor: pointer; transition: background-color var(--hover-speed) ease, color var(--hover-speed) ease; }
+.orb-segment button { padding: 8px 12px; background: #fff; border: none; border-right: 1px solid var(--line-strong); font-family: inherit; font-size: 12.5px; font-weight: 600; color: var(--ink-soft); cursor: pointer; transition: background-color var(--hover-speed) ease, color var(--hover-speed) ease; }
 .orb-segment button:hover:not(.active) { background: var(--paper-2); color: var(--ink); }
 .orb-segment button:last-child { border-right: none; }
 .orb-segment button.active { background: var(--navy); color: #fff; }
 .orb-row-actions { display: flex; gap: 4px; align-items: center; white-space: nowrap; flex-wrap: wrap; }
 .orb-reorder-cell { display: flex; gap: 2px; width: 1%; white-space: nowrap; }
 .orb-edit-row td { background: var(--paper-2); }
-.orb-settings-card { background: var(--surface); border: 1px solid var(--line); border-radius: 5px; padding: 16px; max-width: 420px; }
+.orb-settings-card { background: #fff; border: 1px solid var(--line); border-radius: 5px; padding: 16px; max-width: 420px; }
 .orb-settings-row { display: flex; align-items: center; gap: 10px; margin-top: 4px; }
 
 /* ---- Modal ---- */
 .orb-modal-overlay { position: fixed; inset: 0; background: rgba(16,24,46,0.45); display: flex; align-items: center; justify-content: center; z-index: 50; padding: 20px; }
-.orb-modal { background: var(--surface); border-radius: 6px; width: 100%; max-width: 440px; padding: 20px; }
+.orb-modal { background: #fff; border-radius: 6px; width: 100%; max-width: 440px; padding: 20px; }
 .orb-modal-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
 .orb-modal-head h3 { margin: 0; font-size: 16px; }
 
 /* ---- Location toggle ---- */
 .orb-loc-toggle { display: flex; border: 1px solid var(--line-strong); border-radius: 4px; overflow: hidden; width: fit-content; margin-top: 4px; }
-.orb-loc-toggle button { display: flex; align-items: center; gap: 5px; padding: 7px 12px; background: var(--surface); border: none; border-right: 1px solid var(--line-strong); font-family: inherit; font-size: 12.5px; font-weight: 600; color: var(--ink-soft); cursor: pointer; transition: background-color var(--hover-speed) ease, color var(--hover-speed) ease; }
+.orb-loc-toggle button { display: flex; align-items: center; gap: 5px; padding: 7px 12px; background: #fff; border: none; border-right: 1px solid var(--line-strong); font-family: inherit; font-size: 12.5px; font-weight: 600; color: var(--ink-soft); cursor: pointer; transition: background-color var(--hover-speed) ease, color var(--hover-speed) ease; }
 .orb-loc-toggle button:hover:not(.active) { background: var(--paper-2); color: var(--ink); }
 .orb-loc-toggle button:last-child { border-right: none; }
 .orb-loc-toggle button.active { background: var(--navy); color: #fff; }
@@ -4121,19 +4107,19 @@ const CSS = `
 
 /* ---- Day-grouped history ---- */
 .orb-day-groups { display: flex; flex-direction: column; gap: 12px; }
-.orb-day-card { background: var(--surface); border: 1px solid var(--line); border-radius: 5px; padding: 12px 14px; }
-.orb-day-card-head { display: flex; justify-content: space-between; font-weight: 700; font-size: 13.5px; color: var(--ink); margin-bottom: 8px; }
+.orb-day-card { background: #fff; border: 1px solid var(--line); border-radius: 5px; padding: 12px 14px; }
+.orb-day-card-head { display: flex; justify-content: space-between; font-weight: 700; font-size: 13.5px; color: var(--navy); margin-bottom: 8px; }
 .orb-day-breaks { margin-top: 8px; }
 
 /* ---- Shift schedule ---- */
 .orb-shift-list { display: flex; flex-direction: column; gap: 6px; }
-.orb-shift-row { display: flex; align-items: center; gap: 8px; background: var(--surface); border: 1px solid var(--line); border-left: 3px solid var(--line-strong); border-radius: 4px; padding: 9px 12px; font-size: 13px; flex-wrap: wrap; }
+.orb-shift-row { display: flex; align-items: center; gap: 8px; background: #fff; border: 1px solid var(--line); border-left: 3px solid var(--line-strong); border-radius: 4px; padding: 9px 12px; font-size: 13px; flex-wrap: wrap; }
 .orb-shift-row.day { border-left-color: var(--amber); }
 .orb-shift-row.night { border-left-color: var(--navy-3); }
 .orb-shift-date { font-weight: 600; }
 .orb-shift-badge { margin: 0; }
 .orb-shift-type-toggle { display: flex; border: 1px solid var(--line-strong); border-radius: 4px; overflow: hidden; flex-shrink: 0; }
-.orb-shift-type-toggle button { display: flex; align-items: center; padding: 4px 7px; background: var(--surface); border: none; border-right: 1px solid var(--line-strong); cursor: pointer; color: var(--ink-soft); transition: background-color var(--hover-speed) ease, color var(--hover-speed) ease; }
+.orb-shift-type-toggle button { display: flex; align-items: center; padding: 4px 7px; background: #fff; border: none; border-right: 1px solid var(--line-strong); cursor: pointer; color: var(--ink-soft); transition: background-color var(--hover-speed) ease, color var(--hover-speed) ease; }
 .orb-shift-type-toggle button:hover:not(.active) { background: var(--paper-2); color: var(--ink); }
 .orb-shift-type-toggle button:last-child { border-right: none; }
 .orb-shift-type-toggle button.active { background: var(--navy); color: #fff; }
@@ -4144,7 +4130,7 @@ const CSS = `
 /* ---- Task log grid ---- */
 .orb-day-picker { margin-bottom: 10px; overflow-x: auto; }
 .orb-task-grid-wrap { overflow-x: auto; }
-.orb-task-grid { border-collapse: collapse; font-size: 11.5px; background: var(--surface); }
+.orb-task-grid { border-collapse: collapse; font-size: 11.5px; background: #fff; }
 .orb-task-grid th, .orb-task-grid td { border: 1px solid var(--line); padding: 4px 6px; text-align: center; }
 .orb-task-grid th { background: var(--paper-2); color: var(--ink-soft); font-weight: 600; }
 .orb-task-grid td input[type="checkbox"] { width: 15px; height: 15px; cursor: pointer; }
@@ -4166,7 +4152,7 @@ const CSS = `
 .orb-verify-icon-ok { color: var(--teal); flex-shrink: 0; }
 .orb-verify-icon-warn { color: var(--rose); flex-shrink: 0; }
 .orb-balance-history { display: flex; flex-direction: column; gap: 4px; margin-top: 10px; }
-.orb-balance-row { display: flex; justify-content: space-between; gap: 10px; font-size: 12.5px; background: var(--surface); border: 1px solid var(--line); border-radius: 4px; padding: 6px 10px; }
+.orb-balance-row { display: flex; justify-content: space-between; gap: 10px; font-size: 12.5px; background: #fff; border: 1px solid var(--line); border-radius: 4px; padding: 6px 10px; }
 .orb-roster-earnings { color: var(--ink-soft); font-size: 12px; font-variant-numeric: tabular-nums; white-space: nowrap; font-weight: 600; }
 
 /* ---- Responsive ---- */
