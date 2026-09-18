@@ -4,7 +4,8 @@ import {
   Clock, LogIn, LogOut, CheckCircle2, XCircle, Users, ClipboardList,
   BarChart3, KeyRound, Plus, Trash2, ArrowLeft, RefreshCw, Pencil,
   Check, X, ChevronDown, ChevronRight, ChevronLeft, ChevronUp, UserRound, Coffee, Settings,
-  Home, Wifi, CalendarDays, DollarSign, Eye, Award, Grid3x3, Sun, Moon, AlertTriangle
+  Home, Wifi, CalendarDays, DollarSign, Eye, Award, Grid3x3, Sun, Moon, AlertTriangle,
+  Camera, Mail, Phone, MapPin, FileText, Bell, Activity, ShieldCheck, Save
 } from "lucide-react";
 
 /* ============================================================================
@@ -341,6 +342,58 @@ function sortEmployees(list) {
   });
 }
 
+// [ADDED] employees is the one table the app reads/writes without a
+// per-row mapper (id/name/role/active happen to be spelled the same in
+// both JS and Postgres). The My Profile columns don't have that luck —
+// Postgres is snake_case, the app is camelCase — so this converts a
+// fetched row into the shape the rest of the app (and ProfileTab) expects.
+// Safe to run on a plain seed object too: the snake_case keys it looks
+// for just come back undefined, which ProfileTab already treats as "not
+// set yet".
+function employeeFromRow(row) {
+  return {
+    id: row.id,
+    name: row.name,
+    role: row.role,
+    active: row.active,
+    email: row.email || "",
+    phone: row.phone || "",
+    location: row.location || "",
+    bio: row.bio || "",
+    avatarUrl: row.avatar_url || "",
+    notifyEmail: row.notify_email !== false,
+    notifyPush: row.notify_push !== false,
+    notifyWeeklySummary: row.notify_weekly_summary !== false,
+    publicProfile: !!row.public_profile,
+    verified: row.verified !== false,
+  };
+}
+
+// [ADDED] The other direction of employeeFromRow — every place that
+// upserts an employee object (including the pre-existing toggleActive /
+// changeRole / bulk-resync call sites, not just the new profile save)
+// needs to go through this now, since those employee objects carry the
+// camelCase My Profile fields too and PostgREST rejects unknown columns
+// (there's no `avatarUrl` column — it's `avatar_url`).
+function employeeToRow(e) {
+  return {
+    id: e.id,
+    name: e.name,
+    role: e.role,
+    active: e.active,
+    email: e.email || null,
+    phone: e.phone || null,
+    location: e.location || null,
+    bio: e.bio || null,
+    avatar_url: e.avatarUrl || null,
+    notify_email: e.notifyEmail !== false,
+    notify_push: e.notifyPush !== false,
+    notify_weekly_summary: e.notifyWeeklySummary !== false,
+    public_profile: !!e.publicProfile,
+    verified: e.verified !== false,
+  };
+}
+
 function startOfWeek(d) {
   const date = new Date(d);
   const day = date.getDay();
@@ -663,6 +716,28 @@ function OrbitMark({ size = 30 }) {
   );
 }
 
+// [ADDED] Ambient background used on every screen (login included, since
+// this renders once at the .orb-app root): ten faint, slowly drifting $
+// glyphs, alternating amber/navy tint, replacing the old login-only glow
+// blobs as the one app-wide decorative animation. Purely decorative —
+// aria-hidden and pointer-events:none so it never affects layout or a11y.
+function FloatingDollars() {
+  return (
+    <div className="orb-dollar-bg" aria-hidden="true">
+      <span className="orb-dollar orb-dollar-1">$</span>
+      <span className="orb-dollar orb-dollar-2 navy">$</span>
+      <span className="orb-dollar orb-dollar-3">$</span>
+      <span className="orb-dollar orb-dollar-4 navy">$</span>
+      <span className="orb-dollar orb-dollar-5">$</span>
+      <span className="orb-dollar orb-dollar-6">$</span>
+      <span className="orb-dollar orb-dollar-7 navy">$</span>
+      <span className="orb-dollar orb-dollar-8">$</span>
+      <span className="orb-dollar orb-dollar-9 navy">$</span>
+      <span className="orb-dollar orb-dollar-10">$</span>
+    </div>
+  );
+}
+
 function OrbitDial({ active, paused, fractionOfHour, primary, secondary }) {
   const r = 54, c = 2 * Math.PI * r;
   const frac = Math.max(0, Math.min(1, fractionOfHour));
@@ -787,14 +862,9 @@ function LoginScreen({ employees, onLogin, dbOk, onRetryDb, checkingDb }) {
 
   return (
     <div className="orb-login">
-      <div className="orb-login-rings" aria-hidden="true">
-        <svg viewBox="0 0 600 600" width="600" height="600">
-          <ellipse cx="300" cy="300" rx="260" ry="110" stroke="#F0A93E" strokeOpacity="0.16" strokeWidth="1.5" fill="none" transform="rotate(-18 300 300)" />
-          <ellipse cx="300" cy="300" rx="190" ry="78" stroke="#F0A93E" strokeOpacity="0.22" strokeWidth="1.5" fill="none" transform="rotate(-18 300 300)" />
-          <ellipse cx="300" cy="300" rx="120" ry="48" stroke="#F0A93E" strokeOpacity="0.3" strokeWidth="1.5" fill="none" transform="rotate(-18 300 300)" />
-        </svg>
-      </div>
-      <div className="orb-login-glow" aria-hidden="true" />
+      {/* [CHANGED] Old login-only rings/glow removed — the app-wide
+          FloatingDollars layer (rendered once at the .orb-app root) is now
+          the sole ambient decorative animation, per the mockup restyle. */}
 
       <div className="orb-login-card">
         <div className="orb-brand">
@@ -868,7 +938,7 @@ function LoginScreen({ employees, onLogin, dbOk, onRetryDb, checkingDb }) {
 
 /* ---------------------------------- Header ---------------------------------- */
 
-function Header({ user, onSignOut, onOpenChangePin, dbOk, onRetryDb, checkingDb }) {
+function Header({ user, onSignOut, onOpenProfile, dbOk, onRetryDb, checkingDb }) {
   const [now, setNow] = useState(new Date());
   useEffect(() => {
     const t = setInterval(() => setNow(new Date()), 30000);
@@ -891,10 +961,13 @@ function Header({ user, onSignOut, onOpenChangePin, dbOk, onRetryDb, checkingDb 
         </span>
         <span className="orb-header-user">
           <UserRound size={15} /> {user.name}
-          {user.role === "admin" && <span className="orb-badge orb-badge-admin">Admin</span>}
         </span>
-        <button className="orb-btn orb-btn-ghost orb-btn-sm" onClick={onOpenChangePin}>
-          <KeyRound size={14} /> PIN
+        {/* [CHANGED] The old Admin badge + standalone "PIN" button (PIN
+            change now lives inside My Profile, as "Change PIN") are
+            replaced with direct access to the profile page, right next
+            to Sign out. */}
+        <button className="orb-btn orb-btn-ghost orb-btn-sm" onClick={onOpenProfile}>
+          <UserRound size={14} /> My Profile
         </button>
         <button className="orb-btn orb-btn-ghost orb-btn-sm" onClick={onSignOut}>
           <LogOut size={14} /> Sign out
@@ -964,6 +1037,331 @@ function ChangePinModal({ user, onClose, onSave }) {
         </button>
       </div>
     </Modal>
+  );
+}
+
+/* ---------------------------------- My Profile ---------------------------------- */
+
+// [ADDED] Shared by every signed-in employee (admin or tasker) — reached
+// from the header's "My Profile" link. Ported from the uploaded "Orbital X
+// · Profile" mockup: identity card with stats, an editable personal-info
+// form, notification/visibility preferences, and a recent-activity feed —
+// restyled onto the app's own tokens instead of the mockup's own colors.
+//
+// Downscales a picked image client-side to a small square JPEG data URL so
+// "Change Photo" doesn't need a Supabase Storage bucket — the result is
+// just a normal (if longish) text value in employees.avatar_url. Good
+// enough for a small team; swap for real Storage uploads if photos need
+// to get much larger or more numerous.
+function downscaleImageToDataUrl(file, size = 160) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error("Could not read that file."));
+    reader.onload = () => {
+      const img = new Image();
+      img.onerror = () => reject(new Error("That doesn't look like an image."));
+      img.onload = () => {
+        const canvas = document.createElement("canvas");
+        canvas.width = size;
+        canvas.height = size;
+        const ctx = canvas.getContext("2d");
+        // Cover-crop: scale so the shorter side fills the square, then
+        // center-crop the overflow — matches how the round avatar clips it.
+        const scale = Math.max(size / img.width, size / img.height);
+        const w = img.width * scale, h = img.height * scale;
+        ctx.drawImage(img, (size - w) / 2, (size - h) / 2, w, h);
+        resolve(canvas.toDataURL("image/jpeg", 0.85));
+      };
+      img.src = reader.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+function ProfileTab({ user, sessions, surveys, balanceSubmissions, accounts, onSaveProfile, onOpenChangePin }) {
+  const baseline = useMemo(() => ({
+    name: user.name || "",
+    email: user.email || "",
+    phone: user.phone || "",
+    location: user.location || "",
+    bio: user.bio || "",
+    avatarUrl: user.avatarUrl || "",
+    notifyEmail: user.notifyEmail !== false,
+    notifyPush: user.notifyPush !== false,
+    notifyWeeklySummary: user.notifyWeeklySummary !== false,
+    publicProfile: !!user.publicProfile,
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }), [user.name, user.email, user.phone, user.location, user.bio, user.avatarUrl, user.notifyEmail, user.notifyPush, user.notifyWeeklySummary, user.publicProfile]);
+
+  const [form, setForm] = useState(baseline);
+  const baselineKey = JSON.stringify(baseline);
+  const lastBaselineKeyRef = useRef(baselineKey);
+  // Whenever the saved profile actually changes underneath us (a save
+  // round-tripped through the parent, refreshing `user`), resync the form
+  // to match — this is what makes "Save Changes" disappear again after a
+  // successful save, without wiping out in-progress edits on every render.
+  useEffect(() => {
+    if (lastBaselineKeyRef.current !== baselineKey) {
+      lastBaselineKeyRef.current = baselineKey;
+      setForm(baseline);
+    }
+  }, [baselineKey, baseline]);
+
+  const dirty = JSON.stringify(form) !== baselineKey;
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState("");
+  const fileInputRef = useRef(null);
+
+  function set(field, value) {
+    setForm((f) => ({ ...f, [field]: value }));
+    setSaveError("");
+  }
+
+  async function handleSave() {
+    setSaving(true);
+    setSaveError("");
+    const ok = await onSaveProfile(form);
+    setSaving(false);
+    if (!ok) setSaveError("Couldn't save your changes — check your connection and try again.");
+  }
+
+  function handleDiscard() {
+    setForm(baseline);
+    setSaveError("");
+  }
+
+  async function handlePickPhoto(e) {
+    const file = e.target.files && e.target.files[0];
+    e.target.value = "";
+    if (!file) return;
+    try {
+      const dataUrl = await downscaleImageToDataUrl(file, 160);
+      set("avatarUrl", dataUrl);
+    } catch (err) {
+      setSaveError(err.message || "Couldn't use that photo.");
+    }
+  }
+
+  const now = Date.now();
+  const mySurveys = surveys || [];
+  const successCount = mySurveys.filter((e) => e.result === "successful").length;
+  const successRate = pct(successCount, mySurveys.length);
+  const earnedAllTime = useMemo(() => {
+    const map = earningsByDate(balanceSubmissions || [], accounts);
+    let total = 0;
+    map.forEach((v) => { total += v; });
+    return total;
+  }, [balanceSubmissions, accounts]);
+
+  const isOnline = (sessions || []).some((s) => !s.clockOut);
+
+  const activity = useMemo(() => {
+    const items = [];
+    mySurveys.slice(-6).forEach((e) => {
+      items.push({
+        ts: new Date(e.ts).getTime(),
+        icon: e.result === "successful" ? CheckCircle2 : XCircle,
+        tone: e.result === "successful" ? "green" : "",
+        title: e.result === "successful" ? "Survey completed — successful" : "Survey completed — screened out",
+        sub: new Date(e.ts).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }),
+      });
+    });
+    (sessions || []).filter((s) => s.clockOut).slice(-6).forEach((s) => {
+      items.push({
+        ts: new Date(s.clockOut).getTime(),
+        icon: Clock,
+        tone: "navy",
+        title: "Clocked out from shift",
+        sub: new Date(s.clockOut).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }),
+        amount: fmtHM(sessionNetMs(s, now)),
+      });
+    });
+    (balanceSubmissions || []).slice(-6).forEach((b) => {
+      items.push({
+        ts: new Date(b.submittedAt).getTime(),
+        icon: DollarSign,
+        tone: "",
+        title: "Balance submitted",
+        sub: new Date(b.submittedAt).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }),
+        amount: fmtMoney(b.balance),
+        positive: true,
+      });
+    });
+    return items.sort((a, b) => b.ts - a.ts).slice(0, 6);
+  }, [mySurveys, sessions, balanceSubmissions, now]);
+
+  return (
+    <div>
+      <div className="orb-profile-header">
+        <div>
+          <h1>My Profile</h1>
+          <p>Manage your personal information and preferences</p>
+        </div>
+        <div className="orb-profile-header-actions">
+          {dirty && !saving && (
+            <span className="orb-profile-dirty-hint">Unsaved changes</span>
+          )}
+          {dirty && (
+            <button className="orb-btn orb-btn-ghost-dark orb-btn-sm" onClick={handleDiscard} disabled={saving}>
+              Discard
+            </button>
+          )}
+          {dirty && (
+            <button className="orb-btn orb-btn-primary" onClick={handleSave} disabled={saving}>
+              <Save size={14} /> {saving ? "Saving…" : "Save Changes"}
+            </button>
+          )}
+        </div>
+      </div>
+      {saveError && <div className="orb-banner orb-banner-warn" style={{ marginBottom: 14 }}>{saveError}</div>}
+
+      <div className="orb-profile-layout">
+        {/* LEFT: identity card */}
+        <div className="orb-profile-card">
+          <div className={`orb-avatar-xl ${isOnline ? "" : "offline"}`}>
+            {form.avatarUrl ? <img src={form.avatarUrl} alt="" /> : (user.name || "?").slice(0, 1).toUpperCase()}
+          </div>
+          <div className="orb-profile-name">{user.name}</div>
+          <div className="orb-profile-role">{user.role === "admin" ? "Administrator" : "Tasker"} · Orbital X</div>
+          {user.active !== false && (
+            <div className="orb-profile-verified">
+              <ShieldCheck size={11} /> Verified
+            </div>
+          )}
+
+          <div className="orb-profile-stats">
+            <div>
+              <div className="orb-profile-stat-value amber">{fmtMoney(earnedAllTime)}</div>
+              <div className="orb-profile-stat-label">Earned</div>
+            </div>
+            <div>
+              <div className="orb-profile-stat-value green">{successRate}%</div>
+              <div className="orb-profile-stat-label">Success</div>
+            </div>
+            <div>
+              <div className="orb-profile-stat-value">{mySurveys.length}</div>
+              <div className="orb-profile-stat-label">Tasks</div>
+            </div>
+          </div>
+
+          <div className="orb-profile-actions">
+            <input ref={fileInputRef} type="file" accept="image/*" style={{ display: "none" }} onChange={handlePickPhoto} />
+            <button className="orb-btn orb-btn-primary" onClick={() => fileInputRef.current?.click()}>
+              <Camera size={14} /> Change Photo
+            </button>
+            <button className="orb-btn orb-btn-ghost-dark" onClick={onOpenChangePin}>
+              <KeyRound size={14} /> Change PIN
+            </button>
+          </div>
+        </div>
+
+        {/* RIGHT column */}
+        <div className="orb-profile-main">
+          <div className="orb-profile-panel">
+            <div className="orb-profile-panel-head">
+              <h2><UserRound size={16} /> Personal Information</h2>
+            </div>
+            <div className="orb-profile-form-grid">
+              <div className="orb-profile-field">
+                <label className="orb-field-label"><UserRound size={11} /> Full Name</label>
+                <input className="orb-input" type="text" value={form.name} placeholder="Your full name"
+                  onChange={(e) => set("name", e.target.value)} />
+              </div>
+              <div className="orb-profile-field">
+                <label className="orb-field-label"><Mail size={11} /> Email</label>
+                <input className="orb-input" type="email" value={form.email} placeholder="you@example.com"
+                  onChange={(e) => set("email", e.target.value)} />
+              </div>
+              <div className="orb-profile-field">
+                <label className="orb-field-label"><Phone size={11} /> Phone</label>
+                <input className="orb-input" type="tel" value={form.phone} placeholder="+1 (555) 000-0000"
+                  onChange={(e) => set("phone", e.target.value)} />
+              </div>
+              <div className="orb-profile-field">
+                <label className="orb-field-label"><MapPin size={11} /> Location</label>
+                <input className="orb-input" type="text" value={form.location} placeholder="City, Country"
+                  onChange={(e) => set("location", e.target.value)} />
+              </div>
+              <div className="orb-profile-field full">
+                <label className="orb-field-label"><FileText size={11} /> Bio</label>
+                <textarea className="orb-input" placeholder="Tell us a bit about yourself..." value={form.bio}
+                  onChange={(e) => set("bio", e.target.value)} />
+              </div>
+            </div>
+          </div>
+
+          <div className="orb-profile-panel">
+            <div className="orb-profile-panel-head">
+              <h2><Bell size={16} /> Preferences</h2>
+            </div>
+            <div className="orb-pref-list">
+              <div className="orb-pref-row">
+                <div className="orb-pref-info">
+                  <h4>Email notifications</h4>
+                  <p>Get notified about team updates and payments</p>
+                </div>
+                <label className="orb-toggle">
+                  <input type="checkbox" checked={form.notifyEmail} onChange={(e) => set("notifyEmail", e.target.checked)} />
+                  <span className="orb-toggle-track"></span>
+                </label>
+              </div>
+              <div className="orb-pref-row">
+                <div className="orb-pref-info">
+                  <h4>Push notifications</h4>
+                  <p>Real-time alerts on clock-ins and earnings</p>
+                </div>
+                <label className="orb-toggle">
+                  <input type="checkbox" checked={form.notifyPush} onChange={(e) => set("notifyPush", e.target.checked)} />
+                  <span className="orb-toggle-track"></span>
+                </label>
+              </div>
+              <div className="orb-pref-row">
+                <div className="orb-pref-info">
+                  <h4>Weekly summary</h4>
+                  <p>Receive a weekly performance recap every Sunday</p>
+                </div>
+                <label className="orb-toggle">
+                  <input type="checkbox" checked={form.notifyWeeklySummary} onChange={(e) => set("notifyWeeklySummary", e.target.checked)} />
+                  <span className="orb-toggle-track"></span>
+                </label>
+              </div>
+              <div className="orb-pref-row">
+                <div className="orb-pref-info">
+                  <h4>Public profile</h4>
+                  <p>Allow other team members to view your stats</p>
+                </div>
+                <label className="orb-toggle">
+                  <input type="checkbox" checked={form.publicProfile} onChange={(e) => set("publicProfile", e.target.checked)} />
+                  <span className="orb-toggle-track"></span>
+                </label>
+              </div>
+            </div>
+          </div>
+
+          <div className="orb-profile-panel">
+            <div className="orb-profile-panel-head">
+              <h2><Activity size={16} /> Recent Activity</h2>
+            </div>
+            {activity.length === 0 ? (
+              <div className="orb-empty">Nothing yet — your recent shifts, surveys and submissions will show up here.</div>
+            ) : (
+              <div className="orb-activity-list">
+                {activity.map((a, i) => (
+                  <div key={i} className="orb-activity-row">
+                    <div className={`orb-activity-icon ${a.tone}`}><a.icon size={16} /></div>
+                    <div className="orb-activity-text">
+                      <h4>{a.title}</h4>
+                      <p>{a.sub}</p>
+                    </div>
+                    {a.amount && <div className={`orb-activity-amount ${a.positive ? "positive" : ""}`}>{a.amount}</div>}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -1775,8 +2173,12 @@ function TaskLogTab({ taskLogs, onToggleCell, onDuplicateWeeks, readOnly }) {
 
 /* ---------------------------------- Tasker view shell ---------------------------------- */
 
-function TaskerView({ user, sessions, surveys, shifts, taskLogs, breakMinutes, balanceSubmissions, onClockIn, onClockOut, onStartBreak, onEndBreak, onLogSurvey, onDeleteSurvey, onToggleTaskCell, onSubmitBalance, onDuplicateTaskWeeks, readOnly, kesRate, accounts }) {
-  const [tab, setTab] = useState("clock");
+function TaskerView({ user, sessions, surveys, shifts, taskLogs, breakMinutes, balanceSubmissions, onClockIn, onClockOut, onStartBreak, onEndBreak, onLogSurvey, onDeleteSurvey, onToggleTaskCell, onSubmitBalance, onDuplicateTaskWeeks, readOnly, kesRate, accounts, activeTab, onTabChange, onSaveProfile, onOpenChangePin }) {
+  // [CHANGED] Tab selection is now controlled by the parent (App) instead
+  // of local state, so the header's "My Profile" link can jump straight
+  // to the "profile" tab from outside this component.
+  const tab = activeTab;
+  const setTab = onTabChange;
   const importedWeeks = IMPORTED_SURVEY_HISTORY[user.id] || [];
   return (
     <div className="orb-body">
@@ -1795,6 +2197,9 @@ function TaskerView({ user, sessions, surveys, shifts, taskLogs, breakMinutes, b
         </button>
         <button className={`orb-tab ${tab === "history" ? "active" : ""}`} onClick={() => setTab("history")}>
           <BarChart3 size={15} /> My history
+        </button>
+        <button className={`orb-tab ${tab === "profile" ? "active" : ""}`} onClick={() => setTab("profile")}>
+          <UserRound size={15} /> My Profile
         </button>
       </div>
       {tab === "clock" && (
@@ -1820,6 +2225,9 @@ function TaskerView({ user, sessions, surveys, shifts, taskLogs, breakMinutes, b
       )}
       {tab === "schedule" && <ScheduleTab shifts={shifts} />}
       {tab === "history" && <MyHistoryTab sessions={sessions} />}
+      {tab === "profile" && (
+        <ProfileTab user={user} sessions={sessions} surveys={surveys} balanceSubmissions={balanceSubmissions} accounts={accounts} onSaveProfile={onSaveProfile} onOpenChangePin={onOpenChangePin} />
+      )}
     </div>
   );
 
@@ -2974,8 +3382,12 @@ function AdminTaskerViewTab({ employees, timeLogs, surveys, shifts, taskLogs, ba
 
 
 
-function AdminView({ user, employees, timeLogs, surveys, shifts, taskLogs, accounts, accountEarnings, balanceSubmissions, breakMinutes, kesRate, actions }) {
-  const [tab, setTab] = useState("overview");
+function AdminView({ user, employees, timeLogs, surveys, shifts, taskLogs, accounts, accountEarnings, balanceSubmissions, breakMinutes, kesRate, actions, activeTab, onTabChange, onSaveProfile, onOpenChangePin }) {
+  // [CHANGED] Tab selection is now controlled by the parent (App) instead
+  // of local state, so the header's "My Profile" link can jump straight
+  // to the "profile" tab from outside this component.
+  const tab = activeTab;
+  const setTab = onTabChange;
 
   const nav = [
     { key: "overview", label: "Overview", icon: BarChart3 },
@@ -2988,6 +3400,7 @@ function AdminView({ user, employees, timeLogs, surveys, shifts, taskLogs, accou
     { key: "accounts", label: "Accounts", icon: DollarSign },
     { key: "taskerview", label: "Tasker view", icon: Eye },
     { key: "settings", label: "Settings", icon: Settings },
+    { key: "profile", label: "My Profile", icon: UserRound },
   ];
 
   return (
@@ -3040,6 +3453,17 @@ function AdminView({ user, employees, timeLogs, surveys, shifts, taskLogs, accou
           <AdminTaskerViewTab employees={employees} timeLogs={timeLogs} surveys={surveys} shifts={shifts} taskLogs={taskLogs} balanceSubmissions={balanceSubmissions} breakMinutes={breakMinutes} kesRate={kesRate} accounts={accounts} />
         )}
         {tab === "settings" && <SettingsTab breakMinutes={breakMinutes} onSaveBreakMinutes={actions.updateBreakMinutes} kesRate={kesRate} onSaveKesRate={actions.updateKesRate} />}
+        {tab === "profile" && (
+          <ProfileTab
+            user={user}
+            sessions={timeLogs[user.id] || []}
+            surveys={surveys[user.id] || []}
+            balanceSubmissions={balanceSubmissions[user.id] || []}
+            accounts={accounts}
+            onSaveProfile={onSaveProfile}
+            onOpenChangePin={onOpenChangePin}
+          />
+        )}
       </div>
     </div>
   );
@@ -3067,6 +3491,11 @@ export default function App() {
   // once, synchronously, before the first render.
   const [currentUserId, setCurrentUserId] = useState(readStoredUserId);
   const [showChangePin, setShowChangePin] = useState(false);
+  // [ADDED] Lifted out of AdminView/TaskerView (which used to own this as
+  // local state) so the header's "My Profile" link can jump straight to
+  // the profile tab from outside whichever of those two is rendering.
+  const [adminTab, setAdminTab] = useState("overview");
+  const [taskerTab, setTaskerTab] = useState("clock");
 
   const loadAll = useCallback(async (isRetry) => {
     if (isRetry) setCheckingDb(true);
@@ -3093,13 +3522,17 @@ export default function App() {
 
     let empList;
     if (healthy) {
-      let empRows = await sbSelect("employees", "?select=id,name,role,active");
+      // [CHANGED] Also select the My Profile columns added alongside this
+      // feature (see the SQL migration) — sbSelect returns raw rows with
+      // Postgres' snake_case column names, mapped to the app's camelCase
+      // via employeeFromRow just below.
+      let empRows = await sbSelect("employees", "?select=id,name,role,active,email,phone,location,bio,avatar_url,notify_email,notify_push,notify_weekly_summary,public_profile,verified");
       if (empRows && empRows.length === 0) {
         // [CHANGED] Do not seed plaintext PINs into the employees table.
         // The database should already contain the initial users and hashed PINs.
         empRows = SEED_EMPLOYEES;
       }
-      empList = sortEmployees(empRows || SEED_EMPLOYEES);
+      empList = sortEmployees((empRows || SEED_EMPLOYEES).map(employeeFromRow));
     } else {
       empList = sortEmployees(SEED_EMPLOYEES);
     }
@@ -3267,7 +3700,7 @@ export default function App() {
     const healthy = await checkDbHealth();
     setDbOk(healthy);
     if (healthy) {
-      await sbUpsert("employees", employees);
+      await sbUpsert("employees", employees.map(employeeToRow));
       const allSessions = employees.flatMap((e) => (timeLogs[e.id] || []).map((s) => sessionToRow(e.id, s)));
       const allSurveys = employees.flatMap((e) => (surveys[e.id] || []).map((s) => surveyToRow(e.id, s)));
       const allShifts = employees.flatMap((e) => (shifts[e.id] || []).map(shiftToRow));
@@ -3295,7 +3728,7 @@ export default function App() {
 
   const persistEmployees = useCallback(async (next) => {
     setEmployees(next);
-    await persist(sbUpsert("employees", next));
+    await persist(sbUpsert("employees", next.map(employeeToRow)));
   }, [persist]);
 
   const clockIn = useCallback((empId, location) => {
@@ -3447,7 +3880,7 @@ export default function App() {
     setEmployees((prev) => {
       const updated = prev.map((e) => (e.id === id ? { ...e, active: !e.active } : e));
       const changed = updated.find((e) => e.id === id);
-      persist(sbUpsert("employees", [changed]));
+      persist(sbUpsert("employees", [employeeToRow(changed)]));
       return updated;
     });
   }, [persist]);
@@ -3470,7 +3903,30 @@ export default function App() {
 
     const updated = employees.map((e) => e.id === id ? { ...e, role: newRole } : e);
     setEmployees(updated);
-    persist(sbUpsert("employees", [updated.find((e) => e.id === id)]));
+    persist(sbUpsert("employees", [employeeToRow(updated.find((e) => e.id === id))]));
+  }, [employees, persist]);
+
+  // [ADDED] Saves the My Profile form (My Profile → Save Changes). Updates
+  // local state immediately (optimistic) and reports back whether the
+  // write actually reached the database, so ProfileTab can show an error
+  // and keep the unsaved edits instead of silently discarding them.
+  const updateProfile = useCallback(async (id, payload) => {
+    const updated = employees.map((e) => (e.id === id ? {
+      ...e,
+      name: payload.name?.trim() || e.name,
+      email: payload.email || "",
+      phone: payload.phone || "",
+      location: payload.location || "",
+      bio: payload.bio || "",
+      avatarUrl: payload.avatarUrl || "",
+      notifyEmail: !!payload.notifyEmail,
+      notifyPush: !!payload.notifyPush,
+      notifyWeeklySummary: !!payload.notifyWeeklySummary,
+      publicProfile: !!payload.publicProfile,
+    } : e));
+    setEmployees(updated);
+    const ok = await persist(sbUpsert("employees", [employeeToRow(updated.find((e) => e.id === id))]));
+    return ok;
   }, [employees, persist]);
 
   const deleteEmployee = useCallback(async (id) => {
@@ -3711,6 +4167,7 @@ export default function App() {
   return (
     <div className="orb-app">
       <style>{CSS}</style>
+      <FloatingDollars />
       {loading ? (
         <div className="orb-loading">
           <OrbitMark size={32} />
@@ -3729,7 +4186,10 @@ export default function App() {
           <Header
             user={currentUser}
             onSignOut={() => setCurrentUserId(null)}
-            onOpenChangePin={() => setShowChangePin(true)}
+            onOpenProfile={() => {
+              if (currentUser.role === "admin") setAdminTab("profile");
+              else setTaskerTab("profile");
+            }}
             dbOk={dbOk}
             onRetryDb={retryDbAfterLogin}
             checkingDb={checkingDb}
@@ -3747,6 +4207,10 @@ export default function App() {
               balanceSubmissions={balanceSubmissions}
               breakMinutes={breakMinutes}
               kesRate={kesRate}
+              activeTab={adminTab}
+              onTabChange={setAdminTab}
+              onSaveProfile={(payload) => updateProfile(currentUser.id, payload)}
+              onOpenChangePin={() => setShowChangePin(true)}
               actions={{
                 addEmployee, setPin, toggleActive, changeRole, deleteEmployee, editSession, deleteSession, updateBreakMinutes, updateKesRate,
                 clockIn, clockOut, startBreak, endBreak, submitBalance,
@@ -3764,6 +4228,10 @@ export default function App() {
               breakMinutes={breakMinutes}
               kesRate={kesRate}
               accounts={accounts}
+              activeTab={taskerTab}
+              onTabChange={setTaskerTab}
+              onSaveProfile={(payload) => updateProfile(currentUser.id, payload)}
+              onOpenChangePin={() => setShowChangePin(true)}
               onClockIn={(location) => clockIn(currentUser.id, location)}
               onClockOut={(note) => clockOut(currentUser.id, note)}
               onStartBreak={() => startBreak(currentUser.id)}
@@ -3827,23 +4295,54 @@ export default function App() {
 const CSS = `
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
 
+/* [ADDED] .orb-app below breaks out of its host container's width using
+   100vw (see its own comment). On a platform whose scrollbar eats into
+   the viewport (most desktop browsers on Windows/Linux), 100vw measures
+   slightly wider than the actually-visible area, which can otherwise
+   introduce a sliver of horizontal scroll. This keeps that contained. */
+html, body { overflow-x: hidden; }
+
 .orb-app {
-  --navy: #10182E;
-  --navy-2: #1A2547;
+  /* [CHANGED] Restyled to match a reference mockup: navy #0F1A2C + amber
+     gradient + white, with cards/rows going fully transparent (just a thin
+     border) instead of filled white boxes, and dense surfaces (tables,
+     inputs) going translucent rather than fully transparent so they stay
+     legible. --navy-2 now equals --navy so the sidebar reads as one
+     continuous navy field with the header, per the reference. */
+  --navy: #0F1A2C;
+  --navy-2: #0F1A2C;
   --navy-3: #24315C;
-  --amber: #F0A93E;
+  --amber: #F5B042;
+  --amber-2: #E09E2A;
+  --amber-gradient: linear-gradient(135deg, #F5B042 0%, #E09E2A 100%);
   --brand-blue: #1BB2EB;
   --amber-soft: #FBE7C4;
-  --teal: #2E9E85;
+  --teal: #2B7A4B;
   --teal-soft: #DCF0EA;
   --rose: #D2564E;
   --rose-soft: #FAE1DE;
-  --paper: #F4F6F9;
-  --paper-2: #E9EDF3;
-  --ink: #171B26;
-  --ink-soft: #5A6178;
-  --line: #DCE2ED;
-  --line-strong: #C5CDDC;
+  --paper: #FFFFFF;
+  --paper-2: rgba(15,26,44,0.04);
+  --ink: #0F1A2C;
+  --ink-soft: #6B7A8E;
+  --line: rgba(15,26,44,0.06);
+  --line-strong: rgba(15,26,44,0.12);
+  --line-hover: rgba(245,176,66,0.35);
+  /* Dense/functional surfaces (tables, inputs, modal) use this translucent
+     white instead of a solid fill, so the $ background still shows through
+     but text stays readable. Card-like elements (stat tiles, rows, tiles)
+     use the lighter --surface-glass tint below — see .orb-stat,
+     .orb-roster-row, etc. */
+  --surface-translucent: rgba(255,255,255,0.62);
+  /* [CHANGED] Card-tier elements were "background: transparent" — on a
+     plain white page that's indistinguishable from an ordinary opaque
+     card except in the rare moment a floating $ happens to drift behind
+     one (white-on-white is white at any opacity). A faint NAVY-based
+     wash (same idea as --paper-2 below, which is already visible as the
+     table header's soft grey band) reads as glass at all times, not
+     just when a $ happens to line up with it. */
+  --surface-glass: rgba(15,26,44,0.045);
+  --text-halo: 0 1px 4px rgba(255,255,255,0.9), 0 1px 8px rgba(255,255,255,0.7);
   /* [ADDED] One dial for every hover animation's speed. --hover-speed
      covers color/background/border/opacity/shadow fades; --hover-speed-fast
      covers the small transform "lift" (kept a touch quicker than the color
@@ -3854,7 +4353,19 @@ const CSS = `
   font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Inter', 'Helvetica Neue', Arial, sans-serif;
   color: var(--ink);
   min-height: 100vh;
-  width: 100%;
+  /* [CHANGED] Whatever page/container hosts this app centers it with its
+     own max-width, which left a dark unstyled margin down both sides —
+     visible behind the header/sidebar since their own navy only covers
+     .orb-app's box, not the space outside it. This is the standard
+     "full-bleed" break-out: as long as that outer container is centered
+     in the viewport (it is), sizing to 100vw and pulling back by half
+     the viewport minus half of .orb-app's own (now 100vw) width cancels
+     the container's centering out, so .orb-app itself reaches the true
+     screen edges — with a hair of padding (2px) left on each side rather
+     than running flush into the very edge. */
+  width: calc(100vw - 4px);
+  margin-left: calc(50% - 50vw + 2px);
+  margin-right: calc(50% - 50vw + 2px);
   /* [ADDED] Belt-and-suspenders: a handful of rows below (tabs, tables)
      used to be wide enough on a real mobile viewport to push the whole
      page wider than the screen — visible as a dark sliver of unpainted
@@ -3867,58 +4378,81 @@ const CSS = `
   overflow-x: hidden;
   background: var(--paper);
   font-variant-numeric: tabular-nums;
+  position: relative;
 }
 .orb-app * { box-sizing: border-box; }
 .orb-app h1, .orb-app h2, .orb-app h3, .orb-wordmark { font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Inter', 'Helvetica Neue', Arial, sans-serif; letter-spacing: -0.015em; }
 
 .orb-loading { min-height: 100vh; display: flex; align-items: center; justify-content: center; gap: 10px; color: var(--ink-soft); }
 
-/* ---- Login ---- */
-.orb-login { min-height: 100vh; display: flex; align-items: center; justify-content: center; position: relative; overflow: hidden; padding: 24px; background: var(--paper); }
-.orb-login-rings { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; pointer-events: none; animation: orb-rings-spin 100s linear infinite; opacity: 0.7; }
-.orb-login-glow { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
-.orb-login-glow::before, .orb-login-glow::after { content: ""; position: absolute; left: 50%; border-radius: 50%; filter: blur(70px); opacity: 0.32; animation: orb-glow-pulse 7s ease-in-out infinite; }
-.orb-login-glow::before { width: 420px; height: 420px; top: 2%; transform: translateX(-50%); background: radial-gradient(circle, rgba(240,169,62,0.4) 0%, rgba(240,169,62,0) 70%); }
-.orb-login-glow::after { width: 340px; height: 340px; bottom: 0%; transform: translateX(-50%); background: radial-gradient(circle, rgba(27,178,235,0.3) 0%, rgba(27,178,235,0) 70%); animation-delay: 2.4s; }
-/* [CHANGED] The card no longer floats or rises in — it just sits in place
-   (per request, "this whole tile holding the user login names" should be
-   static). The ambient rings + glow blobs around it keep animating. */
-.orb-login-card { position: relative; width: 100%; max-width: 420px; background: #fff; border: 1px solid var(--line); border-radius: 6px; padding: 32px; box-shadow: 0 20px 50px -25px rgba(16,24,46,0.25); }
-@keyframes orb-rings-spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
-@keyframes orb-glow-pulse { 0%, 100% { opacity: 0.4; transform: translateX(-50%) scale(1); } 50% { opacity: 0.65; transform: translateX(-50%) scale(1.12); } }
-@media (prefers-reduced-motion: reduce) {
-  .orb-login-rings, .orb-login-glow::before, .orb-login-glow::after { animation: none !important; }
+/* ---- Floating $ ambient background (every screen, incl. login) ---- */
+.orb-dollar-bg { position: fixed; inset: 0; pointer-events: none; z-index: 5; overflow: hidden; }
+.orb-dollar { position: absolute; font-weight: 800; color: rgba(245,176,66,0.45); user-select: none; will-change: transform, opacity; animation: orb-float-dollar linear infinite; text-shadow: 0 0 30px rgba(245,176,66,0.35); letter-spacing: -0.02em; line-height: 1; font-family: 'Inter', system-ui, sans-serif; }
+.orb-dollar.navy { color: rgba(15,26,44,0.30); text-shadow: 0 0 30px rgba(15,26,44,0.20); }
+.orb-dollar-1  { font-size: 10rem; top: 4%;    left: 2%;   animation-duration: 26s; animation-delay: 0s;    }
+.orb-dollar-2  { font-size: 15rem; bottom: 5%; right: 2%;  animation-duration: 34s; animation-delay: -8s;  }
+.orb-dollar-3  { font-size: 7rem;  top: 50%;   left: 10%;  animation-duration: 30s; animation-delay: -14s; }
+.orb-dollar-4  { font-size: 12rem; top: 15%;   right: 15%; animation-duration: 38s; animation-delay: -5s;  }
+.orb-dollar-5  { font-size: 18rem; bottom: -8%; left: 28%; animation-duration: 44s; animation-delay: -20s; }
+.orb-dollar-6  { font-size: 6rem;  top: 78%;   left: 72%;  animation-duration: 22s; animation-delay: -10s; }
+.orb-dollar-7  { font-size: 8rem;  top: 35%;   right: 5%;  animation-duration: 32s; animation-delay: -24s; }
+.orb-dollar-8  { font-size: 11rem; top: 2%;    left: 50%;  animation-duration: 40s; animation-delay: -6s;  }
+.orb-dollar-9  { font-size: 5rem;  top: 65%;   left: 40%;  animation-duration: 20s; animation-delay: -3s;  }
+.orb-dollar-10 { font-size: 13rem; top: 25%;   left: -4%;  animation-duration: 42s; animation-delay: -30s; }
+/* [CHANGED] The old keyframes only nudged each glyph 30-90px from its
+   starting spot — a small in-place wobble. These sweep it across a big
+   chunk of the viewport (vw/vh, so it scales with screen size) before
+   looping back to 0%/100%, so the signs genuinely roam the page instead
+   of jittering near where they started. */
+@keyframes orb-float-dollar {
+  0%   { transform: translate(0, 0)          rotate(0deg)   scale(1);    opacity: 0.25; }
+  20%  { transform: translate(22vw, -16vh)   rotate(8deg)   scale(1.1);  opacity: 0.55; }
+  40%  { transform: translate(-14vw, -30vh)  rotate(-6deg)  scale(0.9);  opacity: 0.35; }
+  60%  { transform: translate(26vw, -8vh)    rotate(10deg)  scale(1.15); opacity: 0.6;  }
+  80%  { transform: translate(-18vw, 14vh)   rotate(-8deg)  scale(0.95); opacity: 0.4;  }
+  100% { transform: translate(0, 0)          rotate(0deg)   scale(1);    opacity: 0.25; }
 }
+@media (prefers-reduced-motion: reduce) {
+  .orb-dollar { animation: none !important; opacity: 0.15; }
+}
+
+/* ---- Login ---- */
+.orb-login { min-height: 100vh; display: flex; align-items: center; justify-content: center; position: relative; overflow: hidden; padding: 24px; background: transparent; }
+/* [CHANGED] The card sits statically (no floating/rising), now fully
+   transparent with just a thin border — like every other card in the app
+   — so the $ background drifts behind it instead of behind a white box. */
+.orb-login-card { position: relative; width: 100%; max-width: 420px; background: var(--surface-glass); backdrop-filter: blur(3px); border: 1px solid var(--line); border-radius: 6px; padding: 32px; }
 .orb-brand { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
-.orb-wordmark { font-weight: 700; font-size: 22px; letter-spacing: -0.02em; color: var(--navy); }
-.orb-wordmark-sm { font-size: 17px; color: #fff; }
-.orb-tagline { color: var(--brand-blue); font-size: 10.5px; font-weight: 700; letter-spacing: 2.5px; text-transform: uppercase; margin: 2px 0 0 44px; }
-.orb-login-sub { color: var(--ink-soft); margin: 6px 0 22px; font-size: 14.5px; }
+.orb-wordmark { font-weight: 700; font-size: 22px; letter-spacing: -0.02em; color: var(--navy); text-shadow: var(--text-halo); }
+.orb-wordmark-sm { font-size: 17px; color: #fff; text-shadow: none; }
+.orb-tagline { color: var(--brand-blue); font-size: 10.5px; font-weight: 700; letter-spacing: 2.5px; text-transform: uppercase; margin: 2px 0 0 44px; text-shadow: var(--text-halo); }
+.orb-login-sub { color: var(--ink-soft); margin: 6px 0 22px; font-size: 14.5px; text-shadow: var(--text-halo); }
 
 .orb-employee-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-.orb-employee-tile { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 18px 10px; border: 1px solid var(--line); border-radius: 5px; background: var(--paper); cursor: pointer; font-family: inherit; font-size: 14.5px; font-weight: 600; color: var(--ink); position: relative; transition: transform var(--hover-speed-fast) cubic-bezier(.22,.8,.3,1.1), box-shadow var(--hover-speed) ease, border-color var(--hover-speed) ease, background-color var(--hover-speed) ease; }
-.orb-employee-tile:hover { border-color: var(--amber); background: #f5e8cd60; transform: translateY(-3px); }
+.orb-employee-tile { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 18px 10px; border: 1px solid var(--line); border-radius: 5px; background: var(--surface-glass); backdrop-filter: blur(3px); cursor: pointer; font-family: inherit; font-size: 14.5px; font-weight: 600; color: var(--ink); position: relative; transition: transform var(--hover-speed-fast) cubic-bezier(.22,.8,.3,1.1), box-shadow var(--hover-speed) ease, border-color var(--hover-speed) ease, background-color var(--hover-speed) ease; text-shadow: var(--text-halo); }
+.orb-employee-tile:hover { border-color: var(--line-hover); background: rgba(255,255,255,0.5); transform: translateY(-3px); }
 .orb-employee-tile:active { transform: translateY(-1px) scale(1.01); }
-.orb-avatar { width: 40px; height: 40px; border-radius: 50%; background: var(--navy); color: #fff; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 15px; }
+.orb-avatar { width: 40px; height: 40px; border-radius: 50%; background: var(--navy); color: #fff; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 15px; text-shadow: none; }
+.orb-avatar.amber, .orb-avatar-amber { background: var(--amber-gradient); color: var(--navy); }
 .orb-avatar-sm { width: 26px; height: 26px; font-size: 12px; }
 
 .orb-pin-panel { display: flex; flex-direction: column; gap: 6px; }
-.orb-pin-who { display: flex; align-items: center; gap: 10px; font-weight: 600; font-size: 16px; margin: 4px 0 14px; }
+.orb-pin-who { display: flex; align-items: center; gap: 10px; font-weight: 600; font-size: 16px; margin: 4px 0 14px; text-shadow: var(--text-halo); }
 .orb-back { align-self: flex-start; display: flex; align-items: center; gap: 4px; margin-bottom: 10px; }
-.orb-field-label { font-size: 12.5px; color: var(--ink-soft); font-weight: 600; margin-bottom: 4px; }
-.orb-pin-input { width: 100%; font-size: 22px; font-weight: 700; letter-spacing: 8px; text-align: center; padding: 12px; border-radius: 5px; border: 1px solid var(--line-strong); background: var(--paper); color: var(--ink); transition: border-color var(--hover-speed) ease; font-variant-numeric: tabular-nums; }
+.orb-field-label { font-size: 12.5px; color: var(--ink-soft); font-weight: 600; margin-bottom: 4px; text-shadow: var(--text-halo); }
+.orb-pin-input { width: 100%; font-size: 22px; font-weight: 700; letter-spacing: 8px; text-align: center; padding: 12px; border-radius: 5px; border: 1px solid var(--line-strong); background: var(--surface-translucent); color: var(--ink); transition: border-color var(--hover-speed) ease; font-variant-numeric: tabular-nums; }
 .orb-pin-input:focus { outline: 2px solid var(--amber); outline-offset: 1px; }
 .orb-pindots { display: flex; gap: 8px; justify-content: center; margin: 10px 0 4px; }
 .orb-pindot { width: 9px; height: 9px; border-radius: 50%; background: var(--line-strong); }
 .orb-pindot.filled { background: var(--amber); }
-.orb-error-text { color: var(--rose); font-size: 13px; text-align: center; margin: 4px 0; }
-.orb-hint { color: var(--ink-soft); font-size: 12.5px; margin-top: 10px; }
+.orb-error-text { color: var(--rose); font-size: 13px; text-align: center; margin: 4px 0; text-shadow: var(--text-halo); }
+.orb-hint { color: var(--ink-soft); font-size: 12.5px; margin-top: 10px; text-shadow: var(--text-halo); }
 .orb-shake { animation: orb-shake .4s; }
 @keyframes orb-shake { 0%,100%{transform:translateX(0)} 25%{transform:translateX(-6px)} 75%{transform:translateX(6px)} }
 
-.orb-banner { border-radius: 5px; padding: 12px 14px; font-size: 13.5px; margin-bottom: 16px; }
-.orb-banner-info { background: var(--amber-soft); color: #6B4A16; }
-.orb-banner-warn { background: var(--rose-soft); color: #7A2E28; display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.orb-banner { border-radius: 5px; padding: 12px 14px; font-size: 13.5px; margin-bottom: 16px; border: 1px solid var(--line); }
+.orb-banner-info { background: rgba(245,176,66,0.12); color: #6B4A16; }
+.orb-banner-warn { background: rgba(210,86,78,0.12); color: #7A2E28; display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
 .orb-link-btn { background: none; border: none; color: var(--navy); font-weight: 600; font-size: 13px; text-decoration: underline; cursor: pointer; padding: 0; margin-top: 8px; font-family: inherit; transition: opacity var(--hover-speed) ease; }
 .orb-link-btn:hover { opacity: 0.75; }
 .orb-link-btn-warn { color: #7A2E28; margin-top: 0; white-space: nowrap; display: inline-flex; align-items: center; gap: 4px; }
@@ -3928,13 +4462,18 @@ const CSS = `
 
 /* ---- Header / shell ---- */
 .orb-shell { min-height: 100vh; display: flex; flex-direction: column; }
-.orb-header { background: var(--navy); color: #fff; padding: 12px 20px; display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; position: sticky; top: 0; z-index: 10; }
+/* [CHANGED] Was a solid var(--navy) fill, which completely hid the
+   floating $ layer wherever the header/sidebar sat on top of it (they're
+   above it in stacking, z-index 20 vs 5). A translucent navy + blur lets
+   the $ signs drift across them too, softened rather than sharp, so
+   header/sidebar text stays legible. */
+.orb-header { background: rgba(15,26,44,0.86); backdrop-filter: blur(8px); color: #fff; padding: 12px 20px; display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; height: 68px; box-shadow: 0 4px 20px rgba(15,26,44,0.15); flex-shrink: 0; position: sticky; top: 0; z-index: 20; }
 .orb-header-right { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
-.orb-header-clock { font-size: 12.5px; color: #B9C2DA; font-weight: 600; font-variant-numeric: tabular-nums; }
+.orb-header-clock { font-size: 12.5px; color: rgba(255,255,255,0.85); font-weight: 600; font-variant-numeric: tabular-nums; }
 .orb-header-user { display: flex; align-items: center; gap: 6px; font-size: 13.5px; font-weight: 600; }
 
-.orb-body { flex: 1; padding: 20px; max-width: 1040px; width: 100%; margin: 0 auto; }
-.orb-embedded-tasker { border: 1px solid var(--line); border-radius: 5px; overflow: hidden; background: var(--paper); }
+.orb-body { flex: 1; padding: 20px; max-width: 1040px; width: 100%; margin: 0 auto; position: relative; z-index: 1; }
+.orb-embedded-tasker { border: 1px solid var(--line); border-radius: 5px; overflow: hidden; background: transparent; }
 .orb-embedded-tasker .orb-body { padding: 16px; max-width: none; margin: 0; }
 .orb-embedded-tasker .orb-tabs { padding: 0 2px; }
 .orb-panel { display: flex; flex-direction: column; gap: 6px; }
@@ -3944,12 +4483,12 @@ const CSS = `
 .orb-btn:hover:not(:disabled) { filter: brightness(1.08); transform: translateY(-1px); }
 .orb-btn:active:not(:disabled) { transform: translateY(0) scale(0.98); filter: brightness(0.97); }
 .orb-btn:disabled { opacity: 0.45; cursor: not-allowed; }
-.orb-btn-primary { background: var(--amber); color: #3A2600; }
+.orb-btn-primary { background: var(--amber-gradient); color: #0F1A2C; box-shadow: 0 6px 18px -6px rgba(245,176,66,0.5); }
 .orb-btn-teal { background: var(--teal); color: #fff; }
 .orb-btn-rose { background: var(--rose); color: #fff; }
-.orb-btn-danger { background: #fff; color: var(--rose); border-color: var(--rose); }
-.orb-btn-ghost { background: transparent; color: #fff; border-color: rgba(255,255,255,0.35); }
-.orb-btn-ghost:hover:not(:disabled) { background: rgba(255,255,255,0.08); }
+.orb-btn-danger { background: var(--surface-translucent); color: var(--rose); border-color: var(--rose); }
+.orb-btn-ghost { background: rgba(255,255,255,0.08); color: #fff; border-color: rgba(255,255,255,0.18); }
+.orb-btn-ghost:hover:not(:disabled) { background: rgba(255,255,255,0.16); border-color: rgba(245,176,66,0.5); }
 .orb-btn-ghost-dark { background: transparent; color: var(--navy); border-color: var(--line-strong); }
 .orb-btn-ghost-dark:hover:not(:disabled) { background: var(--paper-2); }
 .orb-btn-lg { padding: 13px 22px; font-size: 14.5px; }
@@ -3970,51 +4509,55 @@ const CSS = `
 .orb-tabs { display: flex; gap: 4px; margin-bottom: 18px; border-bottom: 1px solid var(--line); overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: none; }
 .orb-tabs::-webkit-scrollbar { display: none; }
 .orb-tabs .orb-tab { flex-shrink: 0; }
-.orb-tab { display: flex; align-items: center; gap: 6px; padding: 10px 14px; background: none; border: none; border-bottom: 2px solid transparent; font-family: inherit; font-weight: 600; font-size: 13.5px; color: var(--ink-soft); cursor: pointer; transition: color var(--hover-speed) ease, border-color var(--hover-speed) ease; }
+.orb-tab { display: flex; align-items: center; gap: 6px; padding: 10px 14px; background: none; border: none; border-bottom: 2px solid transparent; font-family: inherit; font-weight: 600; font-size: 13.5px; color: var(--ink-soft); cursor: pointer; transition: color var(--hover-speed) ease, border-color var(--hover-speed) ease; text-shadow: var(--text-halo); }
 .orb-tab:hover { color: var(--ink); }
 .orb-tab.active { color: var(--navy); border-bottom-color: var(--amber); }
 
 .orb-admin { display: flex; flex: 1; max-width: 1200px; width: 100%; margin: 0 auto; }
-.orb-sidebar { width: 190px; background: var(--navy-2); padding: 18px 10px; display: flex; flex-direction: column; gap: 3px; flex-shrink: 0; }
-.orb-sidebar-btn { display: flex; align-items: center; gap: 9px; padding: 10px 12px; border-radius: 4px; background: none; border: none; color: #CBD3E8; font-family: inherit; font-weight: 600; font-size: 13.5px; cursor: pointer; text-align: left; transition: background-color var(--hover-speed) ease, color var(--hover-speed) ease, transform var(--hover-speed-fast) ease; }
-.orb-sidebar-btn:hover { background: rgba(255,255,255,0.06); transform: translateX(2px); }
-.orb-sidebar-btn.active { background: var(--amber); color: #3A2600; }
+.orb-sidebar { width: 190px; background: rgba(15,26,44,0.86); backdrop-filter: blur(8px); padding: 18px 10px; display: flex; flex-direction: column; gap: 3px; flex-shrink: 0; box-shadow: 4px 0 20px rgba(15,26,44,0.1); position: relative; z-index: 20; }
+.orb-sidebar-btn { display: flex; align-items: center; gap: 9px; padding: 10px 12px; border-radius: 4px; background: none; border: none; color: rgba(255,255,255,0.65); font-family: inherit; font-weight: 600; font-size: 13.5px; cursor: pointer; text-align: left; transition: background-color var(--hover-speed) ease, color var(--hover-speed) ease, transform var(--hover-speed-fast) ease; }
+.orb-sidebar-btn:hover { background: rgba(255,255,255,0.06); color: #fff; transform: translateX(2px); }
+.orb-sidebar-btn.active { background: var(--amber-gradient); color: var(--navy); font-weight: 700; box-shadow: 0 6px 18px -6px rgba(245,176,66,0.5); }
 .orb-sidebar-btn.active:hover { transform: none; }
 
 /* ---- Stats / dial ---- */
 .orb-stat-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; margin: 12px 0 18px; }
-.orb-stat { border: 1px solid var(--line); border-radius: 5px; padding: 12px 14px; background: #fff; }
-.orb-stat-value { font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Inter', sans-serif; font-size: 24px; font-weight: 700; font-variant-numeric: tabular-nums; letter-spacing: 0.01em; }
-.orb-stat-label { font-size: 12.5px; color: var(--ink-soft); margin-top: 2px; }
-.orb-stat-amber .orb-stat-value { color: #A66A12; }
+/* [CHANGED] Fully transparent, thin border, a faint amber line across the
+   top — the $ background shows through instead of a filled white tile. */
+.orb-stat { background: var(--surface-glass); backdrop-filter: blur(3px); border: 1px solid var(--line); border-radius: 5px; padding: 12px 14px; text-align: center; position: relative; overflow: visible; transition: transform var(--hover-speed) ease, border-color var(--hover-speed) ease; }
+.orb-stat::before { content: ""; position: absolute; top: 0; left: 20%; right: 20%; height: 2px; background: linear-gradient(90deg, transparent, var(--amber), transparent); opacity: 0.7; }
+.orb-stat:hover { transform: translateY(-3px); border-color: var(--line-hover); }
+.orb-stat-value { font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Inter', sans-serif; font-size: 24px; font-weight: 700; font-variant-numeric: tabular-nums; letter-spacing: 0.01em; text-shadow: var(--text-halo); }
+.orb-stat-label { font-size: 12.5px; color: var(--ink-soft); margin-top: 2px; text-shadow: var(--text-halo); }
+.orb-stat-amber .orb-stat-value { color: #D18E1F; }
 .orb-stat-teal .orb-stat-value { color: var(--teal); }
 .orb-stat-rose .orb-stat-value { color: var(--rose); }
 
-.orb-clock-top { display: flex; gap: 28px; align-items: center; flex-wrap: wrap; background: #fff; border: 1px solid var(--line); border-radius: 6px; padding: 22px; margin-bottom: 6px; }
+.orb-clock-top { display: flex; gap: 28px; align-items: center; flex-wrap: wrap; background: var(--surface-glass); backdrop-filter: blur(3px); border: 1px solid var(--line); border-radius: 6px; padding: 22px; margin-bottom: 6px; }
 .orb-dial { position: relative; width: 140px; height: 140px; flex-shrink: 0; }
 .orb-dial-text { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; }
-.orb-dial-primary { font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Inter', sans-serif; font-size: 19px; font-weight: 700; font-variant-numeric: tabular-nums; letter-spacing: 0.01em; }
-.orb-dial-secondary { font-size: 11px; color: var(--ink-soft); margin-top: 3px; max-width: 100px; }
+.orb-dial-primary { font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Inter', sans-serif; font-size: 19px; font-weight: 700; font-variant-numeric: tabular-nums; letter-spacing: 0.01em; text-shadow: var(--text-halo); }
+.orb-dial-secondary { font-size: 11px; color: var(--ink-soft); margin-top: 3px; max-width: 100px; text-shadow: var(--text-halo); }
 .orb-clock-actions { display: flex; flex-direction: column; gap: 12px; flex: 1; min-width: 240px; }
 .orb-note-field { display: flex; flex-direction: column; }
 
 .orb-log-buttons { display: flex; gap: 10px; margin: 4px 0 22px; flex-wrap: wrap; }
 
 /* ---- Breaks ---- */
-.orb-breaks-bar { background: #fff; border: 1px solid var(--line); border-radius: 5px; padding: 12px 14px; margin: 6px 0 18px; display: flex; flex-direction: column; gap: 8px; }
-.orb-breaks-status { display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 600; color: var(--navy); }
+.orb-breaks-bar { background: var(--surface-glass); backdrop-filter: blur(3px); border: 1px solid var(--line); border-radius: 5px; padding: 12px 14px; margin: 6px 0 18px; display: flex; flex-direction: column; gap: 8px; }
+.orb-breaks-status { display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 600; color: var(--navy); text-shadow: var(--text-halo); }
 .orb-break-history { display: flex; flex-direction: column; gap: 3px; }
-.orb-break-chip { font-size: 12px; color: var(--ink-soft); }
+.orb-break-chip { font-size: 12px; color: var(--ink-soft); text-shadow: var(--text-halo); }
 .orb-break-timer { display: flex; flex-direction: column; gap: 8px; }
-.orb-break-timer-head { display: flex; align-items: center; gap: 7px; font-weight: 700; font-size: 14px; color: var(--navy); flex-wrap: wrap; }
+.orb-break-timer-head { display: flex; align-items: center; gap: 7px; font-weight: 700; font-size: 14px; color: var(--navy); flex-wrap: wrap; text-shadow: var(--text-halo); }
 .orb-progress-track { height: 8px; border-radius: 5px; background: var(--paper-2); overflow: hidden; }
-.orb-progress-fill { height: 100%; background: var(--amber); border-radius: 5px; transition: width 1s linear; }
+.orb-progress-fill { height: 100%; background: var(--amber-gradient); border-radius: 5px; transition: width 1s linear; }
 .orb-progress-fill.over { background: var(--rose); }
 .orb-badge-rose-solid { background: var(--rose); color: #fff; }
 
 /* ---- Tables / lists ---- */
-.orb-subhead { font-weight: 700; font-size: 14.5px; margin: 22px 0 8px; color: var(--navy); }
-.orb-empty { color: var(--ink-soft); font-size: 13.5px; padding: 16px; background: #fff; border: 1px dashed var(--line-strong); border-radius: 5px; text-align: center; }
+.orb-subhead { font-weight: 700; font-size: 14.5px; margin: 22px 0 8px; color: var(--navy); text-shadow: var(--text-halo); }
+.orb-empty { color: var(--ink-soft); font-size: 13.5px; padding: 16px; background: var(--surface-glass); backdrop-filter: blur(3px); border: 1px dashed var(--line-strong); border-radius: 5px; text-align: center; text-shadow: var(--text-halo); }
 /* [CHANGED] Several of these tables (Today's sessions: In/Out/Where/Breaks/
    Worked/Note, and similar admin tables) don't fit their columns in a phone
    width either. Each <table className="orb-table"> is wrapped in a plain
@@ -4026,7 +4569,10 @@ const CSS = `
    Scrolling now lives on the wrapper div instead, so the table itself keeps
    its normal table layout and columns line up correctly at every width.) */
 .orb-table-wrap { max-width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; }
-.orb-table { width: 100%; border-collapse: collapse; background: #fff; border: 1px solid var(--line); border-radius: 5px; font-size: 13.5px; }
+/* [CHANGED] Dense tabular data stays on a translucent (not fully
+   transparent) white wash — the $ background still shows through faintly,
+   but rows of numbers don't get lost in it. */
+.orb-table { width: 100%; border-collapse: collapse; background: var(--surface-translucent); border: 1px solid var(--line); border-radius: 5px; font-size: 13.5px; }
 .orb-table th { text-align: left; background: var(--paper-2); color: var(--ink-soft); font-weight: 600; padding: 9px 12px; font-size: 12px; }
 .orb-table td { padding: 9px 12px; border-top: 1px solid var(--line); }
 /* [CHANGED] Numbers app-wide (stat tiles, clock, table figures, earnings,
@@ -4040,28 +4586,32 @@ const CSS = `
 .orb-note-cell { color: var(--ink-soft); max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 .orb-entry-list { display: flex; flex-direction: column; gap: 6px; }
-.orb-entry-row { display: flex; align-items: center; gap: 10px; background: #fff; border: 1px solid var(--line); border-radius: 4px; padding: 8px 12px; font-size: 13.5px; }
-.orb-entry-result { font-weight: 600; }
-.orb-entry-time { color: var(--ink-soft); margin-left: auto; font-size: 12.5px; }
+.orb-entry-row { display: flex; align-items: center; gap: 10px; background: var(--surface-glass); backdrop-filter: blur(3px); border: 1px solid var(--line); border-radius: 4px; padding: 8px 12px; font-size: 13.5px; transition: border-color var(--hover-speed) ease, transform var(--hover-speed) ease; }
+.orb-entry-row:hover { border-color: var(--line-hover); transform: translateX(2px); }
+.orb-entry-result { font-weight: 600; text-shadow: var(--text-halo); }
+.orb-entry-time { color: var(--ink-soft); margin-left: auto; font-size: 12.5px; text-shadow: var(--text-halo); }
 
 .orb-roster { display: flex; flex-direction: column; gap: 6px; }
-.orb-roster-row { display: flex; align-items: center; gap: 10px; background: #fff; border: 1px solid var(--line); border-radius: 4px; padding: 9px 12px; font-size: 13.5px; }
-.orb-roster-name { font-weight: 600; }
-.orb-roster-status { margin-left: auto; color: var(--ink-soft); font-size: 12.5px; }
+/* [CHANGED] This is the closest match to the reference's "team-row": fully
+   transparent, thin border, hover = amber border + a small rightward nudge. */
+.orb-roster-row { display: flex; align-items: center; gap: 10px; background: var(--surface-glass); backdrop-filter: blur(3px); border: 1px solid var(--line); border-radius: 4px; padding: 9px 12px; font-size: 13.5px; transition: border-color var(--hover-speed) ease, transform var(--hover-speed) ease; }
+.orb-roster-row:hover { border-color: var(--line-hover); transform: translateX(2px); }
+.orb-roster-name { font-weight: 600; text-shadow: var(--text-halo); }
+.orb-roster-status { margin-left: auto; color: var(--ink-soft); font-size: 12.5px; text-shadow: var(--text-halo); }
 
 /* ---- Badges / dots ---- */
 .orb-badge { font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 5px; }
-.orb-badge-admin { background: var(--navy-3); color: #fff; margin-left: 6px; }
+.orb-badge-admin { background: rgba(255,255,255,0.12); border: 1px solid rgba(255,255,255,0.18); color: var(--amber); margin-left: 6px; }
 .orb-badge-live { background: var(--teal-soft); color: var(--teal); }
 .orb-badge-muted { background: var(--paper-2); color: var(--ink-soft); }
-.orb-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
-.orb-dot-teal { background: var(--teal); }
+.orb-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; background: #D1D9E3; }
+.orb-dot-teal { background: var(--teal); box-shadow: 0 0 0 4px rgba(43,122,75,0.15); }
 .orb-dot-rose { background: var(--rose); }
 .orb-dot-amber { background: var(--amber); }
-.orb-dot-muted { background: var(--line-strong); }
+.orb-dot-muted { background: #D1D9E3; }
 
 /* ---- Forms / inputs ---- */
-.orb-input { border: 1px solid var(--line-strong); border-radius: 4px; padding: 9px 11px; font-family: inherit; font-size: 13.5px; background: #fff; color: var(--ink); width: 100%; transition: border-color var(--hover-speed) ease; }
+.orb-input { border: 1px solid var(--line-strong); border-radius: 4px; padding: 9px 11px; font-family: inherit; font-size: 13.5px; background: var(--surface-translucent); color: var(--ink); width: 100%; transition: border-color var(--hover-speed) ease; }
 .orb-input:focus { outline: 2px solid var(--amber); outline-offset: 1px; }
 .orb-input-sm { padding: 6px 8px; font-size: 12.5px; }
 .orb-input-pin { width: 90px; text-align: center; letter-spacing: 3px; font-weight: 700; flex: none; }
@@ -4073,64 +4623,66 @@ const CSS = `
 .orb-filter-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 4px; }
 .orb-filter-row .orb-input { width: auto; min-width: 170px; }
 .orb-segment { display: flex; border: 1px solid var(--line-strong); border-radius: 4px; overflow: hidden; }
-.orb-segment button { padding: 8px 12px; background: #fff; border: none; border-right: 1px solid var(--line-strong); font-family: inherit; font-size: 12.5px; font-weight: 600; color: var(--ink-soft); cursor: pointer; transition: background-color var(--hover-speed) ease, color var(--hover-speed) ease; }
+.orb-segment button { padding: 8px 12px; background: var(--surface-translucent); border: none; border-right: 1px solid var(--line-strong); font-family: inherit; font-size: 12.5px; font-weight: 600; color: var(--ink-soft); cursor: pointer; transition: background-color var(--hover-speed) ease, color var(--hover-speed) ease; }
 .orb-segment button:hover:not(.active) { background: var(--paper-2); color: var(--ink); }
 .orb-segment button:last-child { border-right: none; }
 .orb-segment button.active { background: var(--navy); color: #fff; }
 .orb-row-actions { display: flex; gap: 4px; align-items: center; white-space: nowrap; flex-wrap: wrap; }
 .orb-reorder-cell { display: flex; gap: 2px; width: 1%; white-space: nowrap; }
 .orb-edit-row td { background: var(--paper-2); }
-.orb-settings-card { background: #fff; border: 1px solid var(--line); border-radius: 5px; padding: 16px; max-width: 420px; }
+.orb-settings-card { background: var(--surface-translucent); border: 1px solid var(--line); border-radius: 5px; padding: 16px; max-width: 420px; }
 .orb-settings-row { display: flex; align-items: center; gap: 10px; margin-top: 4px; }
 
 /* ---- Modal ---- */
-.orb-modal-overlay { position: fixed; inset: 0; background: rgba(16,24,46,0.45); display: flex; align-items: center; justify-content: center; z-index: 50; padding: 20px; }
-.orb-modal { background: #fff; border-radius: 6px; width: 100%; max-width: 440px; padding: 20px; }
+.orb-modal-overlay { position: fixed; inset: 0; background: rgba(15,26,44,0.45); display: flex; align-items: center; justify-content: center; z-index: 50; padding: 20px; }
+.orb-modal { background: var(--surface-translucent); backdrop-filter: blur(6px); border-radius: 6px; width: 100%; max-width: 440px; padding: 20px; }
 .orb-modal-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
 .orb-modal-head h3 { margin: 0; font-size: 16px; }
 
 /* ---- Location toggle ---- */
 .orb-loc-toggle { display: flex; border: 1px solid var(--line-strong); border-radius: 4px; overflow: hidden; width: fit-content; margin-top: 4px; }
-.orb-loc-toggle button { display: flex; align-items: center; gap: 5px; padding: 7px 12px; background: #fff; border: none; border-right: 1px solid var(--line-strong); font-family: inherit; font-size: 12.5px; font-weight: 600; color: var(--ink-soft); cursor: pointer; transition: background-color var(--hover-speed) ease, color var(--hover-speed) ease; }
+.orb-loc-toggle button { display: flex; align-items: center; gap: 5px; padding: 7px 12px; background: var(--surface-translucent); border: none; border-right: 1px solid var(--line-strong); font-family: inherit; font-size: 12.5px; font-weight: 600; color: var(--ink-soft); cursor: pointer; transition: background-color var(--hover-speed) ease, color var(--hover-speed) ease; }
 .orb-loc-toggle button:hover:not(.active) { background: var(--paper-2); color: var(--ink); }
 .orb-loc-toggle button:last-child { border-right: none; }
 .orb-loc-toggle button.active { background: var(--navy); color: #fff; }
 .orb-loc-toggle.disabled button { opacity: 0.5; cursor: not-allowed; }
-.orb-current-loc { display: flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--ink-soft); font-weight: 600; }
+.orb-current-loc { display: flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--ink-soft); font-weight: 600; text-shadow: var(--text-halo); }
 
 /* ---- Badge/text color utilities ---- */
 .orb-badge-teal-solid { background: var(--teal); color: #fff; }
-.orb-badge-amber-solid { background: var(--amber); color: #3A2600; }
+.orb-badge-amber-solid { background: var(--amber-gradient); color: #0F1A2C; }
 .orb-badge-tiny { font-size: 9.5px; padding: 1px 6px; margin-left: 4px; }
 .orb-text-rose { color: var(--rose); font-weight: 600; }
 .orb-text-teal { color: var(--teal); font-weight: 600; }
 
 /* ---- Day-grouped history ---- */
 .orb-day-groups { display: flex; flex-direction: column; gap: 12px; }
-.orb-day-card { background: #fff; border: 1px solid var(--line); border-radius: 5px; padding: 12px 14px; }
-.orb-day-card-head { display: flex; justify-content: space-between; font-weight: 700; font-size: 13.5px; color: var(--navy); margin-bottom: 8px; }
+.orb-day-card { background: var(--surface-glass); backdrop-filter: blur(3px); border: 1px solid var(--line); border-radius: 5px; padding: 12px 14px; transition: border-color var(--hover-speed) ease; }
+.orb-day-card:hover { border-color: var(--line-hover); }
+.orb-day-card-head { display: flex; justify-content: space-between; font-weight: 700; font-size: 13.5px; color: var(--navy); margin-bottom: 8px; text-shadow: var(--text-halo); }
 .orb-day-breaks { margin-top: 8px; }
 
 /* ---- Shift schedule ---- */
 .orb-shift-list { display: flex; flex-direction: column; gap: 6px; }
-.orb-shift-row { display: flex; align-items: center; gap: 8px; background: #fff; border: 1px solid var(--line); border-left: 3px solid var(--line-strong); border-radius: 4px; padding: 9px 12px; font-size: 13px; flex-wrap: wrap; }
+.orb-shift-row { display: flex; align-items: center; gap: 8px; background: var(--surface-glass); backdrop-filter: blur(3px); border: 1px solid var(--line); border-left: 3px solid var(--line-strong); border-radius: 4px; padding: 9px 12px; font-size: 13px; flex-wrap: wrap; transition: border-color var(--hover-speed) ease; }
+.orb-shift-row:hover { border-color: var(--line-hover); }
 .orb-shift-row.day { border-left-color: var(--amber); }
 .orb-shift-row.night { border-left-color: var(--navy-3); }
-.orb-shift-date { font-weight: 600; }
+.orb-shift-date { font-weight: 600; text-shadow: var(--text-halo); }
 .orb-shift-badge { margin: 0; }
 .orb-shift-type-toggle { display: flex; border: 1px solid var(--line-strong); border-radius: 4px; overflow: hidden; flex-shrink: 0; }
-.orb-shift-type-toggle button { display: flex; align-items: center; padding: 4px 7px; background: #fff; border: none; border-right: 1px solid var(--line-strong); cursor: pointer; color: var(--ink-soft); transition: background-color var(--hover-speed) ease, color var(--hover-speed) ease; }
+.orb-shift-type-toggle button { display: flex; align-items: center; padding: 4px 7px; background: var(--surface-translucent); border: none; border-right: 1px solid var(--line-strong); cursor: pointer; color: var(--ink-soft); transition: background-color var(--hover-speed) ease, color var(--hover-speed) ease; }
 .orb-shift-type-toggle button:hover:not(.active) { background: var(--paper-2); color: var(--ink); }
 .orb-shift-type-toggle button:last-child { border-right: none; }
 .orb-shift-type-toggle button.active { background: var(--navy); color: #fff; }
-.orb-shift-time { color: var(--ink-soft); font-variant-numeric: tabular-nums; font-weight: 600; }
-.orb-shift-notes { color: var(--ink-soft); font-style: italic; }
+.orb-shift-time { color: var(--ink-soft); font-variant-numeric: tabular-nums; font-weight: 600; text-shadow: var(--text-halo); }
+.orb-shift-notes { color: var(--ink-soft); font-style: italic; text-shadow: var(--text-halo); }
 .orb-schedule-form { display: grid; grid-template-columns: 1fr 1fr auto auto auto 1.4fr auto; gap: 8px; margin-bottom: 16px; align-items: center; }
 
 /* ---- Task log grid ---- */
 .orb-day-picker { margin-bottom: 10px; overflow-x: auto; }
 .orb-task-grid-wrap { overflow-x: auto; }
-.orb-task-grid { border-collapse: collapse; font-size: 11.5px; background: #fff; }
+.orb-task-grid { border-collapse: collapse; font-size: 11.5px; background: var(--surface-translucent); }
 .orb-task-grid th, .orb-task-grid td { border: 1px solid var(--line); padding: 4px 6px; text-align: center; }
 .orb-task-grid th { background: var(--paper-2); color: var(--ink-soft); font-weight: 600; }
 .orb-task-grid td input[type="checkbox"] { width: 15px; height: 15px; cursor: pointer; }
@@ -4138,7 +4690,7 @@ const CSS = `
 /* ---- Earnings / balance submission ---- */
 .orb-earnings-card { margin-top: 22px; border-top: 1px dashed var(--line-strong); padding-top: 18px; }
 .orb-cut-table td:first-child { font-weight: 600; }
-.orb-kes { color: var(--ink-soft); font-size: 12px; display: block; font-weight: 600; font-variant-numeric: tabular-nums; }
+.orb-kes { color: var(--ink-soft); font-size: 12px; display: block; font-weight: 600; font-variant-numeric: tabular-nums; text-shadow: var(--text-halo); }
 .orb-earnings-form { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 8px 0; }
 .orb-earnings-add-row { grid-template-columns: 1.6fr 1fr 1fr auto; }
 .orb-file-btn { cursor: pointer; }
@@ -4152,8 +4704,84 @@ const CSS = `
 .orb-verify-icon-ok { color: var(--teal); flex-shrink: 0; }
 .orb-verify-icon-warn { color: var(--rose); flex-shrink: 0; }
 .orb-balance-history { display: flex; flex-direction: column; gap: 4px; margin-top: 10px; }
-.orb-balance-row { display: flex; justify-content: space-between; gap: 10px; font-size: 12.5px; background: #fff; border: 1px solid var(--line); border-radius: 4px; padding: 6px 10px; }
-.orb-roster-earnings { color: var(--ink-soft); font-size: 12px; font-variant-numeric: tabular-nums; white-space: nowrap; font-weight: 600; }
+.orb-balance-row { display: flex; justify-content: space-between; gap: 10px; font-size: 12.5px; background: var(--surface-glass); backdrop-filter: blur(3px); border: 1px solid var(--line); border-radius: 4px; padding: 6px 10px; }
+.orb-roster-earnings { color: var(--ink-soft); font-size: 12px; font-variant-numeric: tabular-nums; white-space: nowrap; font-weight: 600; text-shadow: var(--text-halo); }
+.orb-roster-earnings strong { color: #D18E1F; }
+
+/* ---- My Profile ---- */
+/* [ADDED] Ported from the uploaded "Orbital X · Profile" mockup — same
+   layout and features (identity card with stats, personal info form,
+   preferences toggles, recent activity), restyled onto the app's own
+   tokens (--surface-glass, --line, --text-halo, --hover-speed) instead of
+   the mockup's hardcoded colors, so it matches every other page. */
+.orb-profile-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 18px; }
+.orb-profile-header h1 { font-size: 19px; font-weight: 700; color: var(--ink); letter-spacing: -0.01em; text-shadow: var(--text-halo); }
+.orb-profile-header p { font-size: 12.5px; color: var(--ink-soft); margin-top: 2px; text-shadow: var(--text-halo); }
+.orb-profile-header-actions { display: flex; gap: 8px; align-items: center; }
+.orb-profile-dirty-hint { font-size: 11.5px; color: var(--ink-soft); font-weight: 600; text-shadow: var(--text-halo); }
+
+.orb-profile-layout { display: grid; grid-template-columns: 300px 1fr; gap: 16px; align-items: start; }
+
+.orb-profile-card { background: var(--surface-glass); backdrop-filter: blur(3px); border: 1px solid var(--line); border-radius: 12px; padding: 26px 18px; text-align: center; position: relative; transition: border-color var(--hover-speed) ease, transform var(--hover-speed) ease; }
+.orb-profile-card::before { content: ""; position: absolute; top: 0; left: 20%; right: 20%; height: 2px; background: linear-gradient(90deg, transparent, var(--amber), transparent); opacity: 0.8; }
+.orb-profile-card:hover { border-color: var(--line-hover); transform: translateY(-3px); }
+
+.orb-avatar-xl { width: 96px; height: 96px; border-radius: 50%; margin: 0 auto 12px auto; background: var(--amber-gradient); color: var(--navy); display: flex; align-items: center; justify-content: center; font-size: 34px; font-weight: 800; position: relative; box-shadow: 0 10px 26px -10px rgba(245,176,66,0.5); overflow: hidden; }
+.orb-avatar-xl img { width: 100%; height: 100%; object-fit: cover; border-radius: 50%; }
+.orb-avatar-xl::after { content: ""; position: absolute; bottom: 2px; right: 2px; width: 17px; height: 17px; border-radius: 50%; background: var(--teal); border: 3px solid #fff; }
+.orb-avatar-xl.offline::after { background: #D1D9E3; }
+
+.orb-profile-name { font-size: 18px; font-weight: 700; color: var(--ink); letter-spacing: -0.01em; text-shadow: var(--text-halo); }
+.orb-profile-role { font-size: 12.5px; color: var(--ink-soft); margin-top: 3px; font-weight: 500; text-shadow: var(--text-halo); }
+.orb-profile-verified { display: inline-flex; align-items: center; gap: 5px; margin-top: 10px; padding: 4px 12px; border-radius: 100px; background: rgba(245,176,66,0.12); border: 1px solid rgba(245,176,66,0.3); color: #B87C1A; font-size: 10.5px; font-weight: 700; letter-spacing: 0.4px; text-transform: uppercase; }
+
+.orb-profile-stats { display: grid; grid-template-columns: repeat(3,1fr); gap: 6px; margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--line); }
+.orb-profile-stat-value { font-size: 15px; font-weight: 700; color: var(--ink); text-shadow: var(--text-halo); }
+.orb-profile-stat-value.amber { color: #D18E1F; }
+.orb-profile-stat-value.green { color: var(--teal); }
+.orb-profile-stat-label { font-size: 9.5px; color: var(--ink-soft); text-transform: uppercase; letter-spacing: 0.5px; margin-top: 3px; font-weight: 500; text-shadow: var(--text-halo); }
+
+.orb-profile-actions { display: flex; flex-direction: column; gap: 8px; margin-top: 18px; }
+.orb-profile-actions .orb-btn { width: 100%; }
+
+.orb-profile-main { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+.orb-profile-panel { background: var(--surface-glass); backdrop-filter: blur(3px); border: 1px solid var(--line); border-radius: 10px; padding: 18px 20px; transition: border-color var(--hover-speed) ease; }
+.orb-profile-panel:hover { border-color: var(--line-hover); }
+.orb-profile-panel-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; gap: 10px; flex-wrap: wrap; }
+.orb-profile-panel-head h2 { font-size: 14px; font-weight: 700; color: var(--ink); display: flex; align-items: center; gap: 8px; text-shadow: var(--text-halo); }
+.orb-profile-panel-head h2 svg { color: #D18E1F; opacity: 0.9; }
+
+.orb-profile-form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px 14px; }
+.orb-profile-field { display: flex; flex-direction: column; gap: 5px; }
+.orb-profile-field.full { grid-column: 1 / -1; }
+.orb-profile-field textarea.orb-input { resize: vertical; min-height: 78px; line-height: 1.5; font-family: inherit; }
+
+.orb-pref-row { display: flex; align-items: center; justify-content: space-between; padding: 11px 0; border-bottom: 1px solid var(--line); gap: 12px; }
+.orb-pref-row:last-child { border-bottom: none; }
+.orb-pref-info h4 { font-size: 13px; font-weight: 600; color: var(--ink); text-shadow: var(--text-halo); }
+.orb-pref-info p { font-size: 11.5px; color: var(--ink-soft); margin-top: 2px; text-shadow: var(--text-halo); }
+
+.orb-toggle { position: relative; width: 40px; height: 23px; flex-shrink: 0; cursor: pointer; display: inline-block; }
+.orb-toggle input { opacity: 0; width: 0; height: 0; position: absolute; }
+.orb-toggle-track { position: absolute; inset: 0; background: var(--line-strong); border-radius: 100px; transition: background var(--hover-speed) ease; }
+.orb-toggle-track::after { content: ""; position: absolute; top: 3px; left: 3px; width: 17px; height: 17px; border-radius: 50%; background: #fff; box-shadow: 0 2px 6px rgba(15,26,44,0.25); transition: transform var(--hover-speed-fast) cubic-bezier(.3,.9,.4,1.2); }
+.orb-toggle input:checked + .orb-toggle-track { background: var(--amber-gradient); }
+.orb-toggle input:checked + .orb-toggle-track::after { transform: translateX(17px); }
+
+.orb-activity-row { display: flex; align-items: center; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--line); }
+.orb-activity-row:last-child { border-bottom: none; }
+.orb-activity-icon { width: 36px; height: 36px; border-radius: 9px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; background: rgba(245,176,66,0.12); color: #B87C1A; }
+.orb-activity-icon.navy { background: rgba(15,26,44,0.08); color: var(--navy); }
+.orb-activity-icon.green { background: rgba(43,122,75,0.1); color: var(--teal); }
+.orb-activity-text { flex: 1; min-width: 0; }
+.orb-activity-text h4 { font-size: 13px; font-weight: 600; color: var(--ink); text-shadow: var(--text-halo); }
+.orb-activity-text p { font-size: 11px; color: var(--ink-soft); margin-top: 2px; text-shadow: var(--text-halo); }
+.orb-activity-amount { font-size: 13px; font-weight: 700; color: #D18E1F; text-shadow: var(--text-halo); flex-shrink: 0; }
+.orb-activity-amount.positive { color: var(--teal); }
+
+@media (max-width: 950px) {
+  .orb-profile-layout { grid-template-columns: 1fr; }
+}
 
 /* ---- Responsive ---- */
 @media (max-width: 720px) {
@@ -4168,5 +4796,6 @@ const CSS = `
   .orb-schedule-form { grid-template-columns: 1fr 1fr; }
   .orb-roster-row { flex-wrap: wrap; }
   .orb-roster-earnings { margin-left: 34px; }
+  .orb-profile-form-grid { grid-template-columns: 1fr; }
 }
 `;
