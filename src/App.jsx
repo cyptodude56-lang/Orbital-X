@@ -335,6 +335,26 @@ let _uidCounter = 0;
 const uid = () => (++_uidCounter).toString(36) + Math.random().toString(36).slice(2, 8) + Date.now().toString(36).slice(-4);
 const genPin = () => String(Math.floor(1000 + Math.random() * 9000));
 
+// [ADDED] Curated Marvel character names used as employee usernames. Admins
+// pick one of these from a dropdown when adding a new tasker (see
+// EmployeesTab); existing employees were backfilled with a random pick from
+// this same list by the SQL migration. Kept here as the single source of
+// truth for the client — if you add/rename entries, the two lists will
+// simply diverge for older, already-assigned usernames, which is fine.
+const MARVEL_USERNAMES = [
+  "IronMan", "CaptainAmerica", "Thor", "BlackWidow", "Hawkeye", "Hulk",
+  "SpiderMan", "DoctorStrange", "BlackPanther", "StarLord", "Gamora",
+  "Drax", "RocketRaccoon", "Groot", "Mantis", "NebulaX", "WarMachine",
+  "FalconWing", "WinterSoldier", "ScarletWitch", "Vision", "AntMan",
+  "Wasp", "CaptainMarvel", "NickFury", "Loki", "Valkyrie", "Wolverine",
+  "StormRider", "ProfessorX", "Cyclops", "JeanGrey", "Beast", "Rogue",
+  "Gambit", "Nightcrawler", "Colossus", "Deadpool", "Daredevil", "Jessica",
+  "LukeCage", "IronFist", "Punisher", "Venom", "MilesMorales", "Ghost",
+  "SheHulk", "MsMarvel", "Shuri", "Okoye", "Wong", "Mockingbird",
+  "QuakeDaisy", "Cable", "Bishop", "Psylocke", "IcemanX", "Magneto",
+  "Sentinel", "Havok",
+];
+
 function sortEmployees(list) {
   return list.slice().sort((a, b) => {
     if (a.role !== b.role) return a.role === "admin" ? -1 : 1;
@@ -356,6 +376,7 @@ function employeeFromRow(row) {
     name: row.name,
     role: row.role,
     active: row.active,
+    username: row.username || "",
     email: row.email || "",
     phone: row.phone || "",
     location: row.location || "",
@@ -381,6 +402,7 @@ function employeeToRow(e) {
     name: e.name,
     role: e.role,
     active: e.active,
+    username: e.username || null,
     email: e.email || null,
     phone: e.phone || null,
     location: e.location || null,
@@ -821,20 +843,48 @@ function PinField({ value, onChange, autoFocus }) {
 
 /* ---------------------------------- Login screen ---------------------------------- */
 
+// [CHANGED] Sign-in is now username + PIN for every account, instead of
+// picking your name off a tile grid. Step 1 (username) replaces the old
+// tile grid; step 2 (PIN) is unchanged, reusing the same RPC-backed
+// verifyEmployeePin — the employee is looked up by username on the client
+// (the full active roster, including usernames, is already loaded before
+// login, same as it was for the tile grid) and then verified by id exactly
+// as before, so the PIN-hashing RPC itself needed no changes.
 function LoginScreen({ employees, onLogin, dbOk, onRetryDb, checkingDb }) {
   const [pickedId, setPickedId] = useState(null);
+  const [usernameInput, setUsernameInput] = useState("");
+  const [usernameError, setUsernameError] = useState("");
   const [pin, setPin] = useState("");
   const [error, setError] = useState("");
   const [shake, setShake] = useState(false);
   const [busy, setBusy] = useState(false);
+  const usernameRef = useRef(null);
   const inputRef = useRef(null);
 
   const active = employees.filter((e) => e.active);
   const picked = active.find((e) => e.id === pickedId);
 
   useEffect(() => {
+    if (!pickedId && usernameRef.current) usernameRef.current.focus();
+  }, [pickedId]);
+
+  useEffect(() => {
     if (pickedId && inputRef.current) inputRef.current.focus();
   }, [pickedId]);
+
+  function continueWithUsername() {
+    const typed = usernameInput.trim();
+    if (!typed) return;
+    const match = active.find((e) => (e.username || "").toLowerCase() === typed.toLowerCase());
+    if (!match) {
+      setUsernameError("No account with that username. Check with your admin.");
+      return;
+    }
+    setUsernameError("");
+    setPickedId(match.id);
+    setPin("");
+    setError("");
+  }
 
   async function submit() {
     if (!picked || pin.length !== 4 || busy) return;
@@ -889,19 +939,31 @@ function LoginScreen({ employees, onLogin, dbOk, onRetryDb, checkingDb }) {
         )}
 
         {!picked ? (
-          <div className="orb-employee-grid">
-            {active.map((e) => (
-              <button key={e.id} className="orb-employee-tile" onClick={() => { setPickedId(e.id); setPin(""); setError(""); }}>
-                <span className="orb-avatar">{e.name.slice(0, 1).toUpperCase()}</span>
-                <span>{e.name}</span>
-                {e.role === "admin" && <span className="orb-badge orb-badge-admin">Admin</span>}
-              </button>
-            ))}
+          <div className="orb-pin-panel">
+            <label className="orb-field-label" htmlFor="username-input">Username</label>
+            <input
+              id="username-input"
+              ref={usernameRef}
+              className="orb-input"
+              type="text"
+              autoCapitalize="none"
+              autoCorrect="off"
+              spellCheck={false}
+              placeholder="e.g. StarLord"
+              value={usernameInput}
+              onChange={(ev) => { setUsernameInput(ev.target.value); setUsernameError(""); }}
+              onKeyDown={(ev) => { if (ev.key === "Enter") continueWithUsername(); }}
+            />
+            {usernameError && <div className="orb-error-text">{usernameError}</div>}
+            <button className="orb-btn orb-btn-primary orb-btn-block" disabled={!usernameInput.trim()} onClick={continueWithUsername}>
+              <LogIn size={16} /> Continue
+            </button>
+            <div className="orb-hint">Don't know your username? Ask your admin.</div>
           </div>
         ) : (
           <div className={`orb-pin-panel ${shake ? "orb-shake" : ""}`}>
-            <button className="orb-link-btn orb-back" onClick={() => { setPickedId(null); setPin(""); setError(""); }}>
-              <ArrowLeft size={14} /> Not {picked.name}?
+            <button className="orb-link-btn orb-back" onClick={() => { setPickedId(null); setUsernameInput(""); setPin(""); setError(""); }}>
+              <ArrowLeft size={14} /> Not {picked.username || picked.name}?
             </button>
             <div className="orb-pin-who">
               <span className="orb-avatar">{picked.name.slice(0, 1).toUpperCase()}</span>
@@ -1223,6 +1285,14 @@ function ProfileTab({ user, sessions, surveys, balanceSubmissions, accounts, onS
           </div>
           <div className="orb-profile-name">{user.name}</div>
           <div className="orb-profile-role">{user.role === "admin" ? "Administrator" : "Tasker"} · Orbital X</div>
+          {/* [ADDED] Sign-in is now username + PIN, so employees need a way
+              to see their own username — most importantly the ones who were
+              randomly assigned one by the username migration and have never
+              typed it before. Read-only: usernames are assigned by an admin
+              (or the migration), not self-service. */}
+          {user.username && (
+            <div className="orb-profile-role" style={{ marginTop: 2 }}>Username: <strong>{user.username}</strong></div>
+          )}
           {user.active !== false && (
             <div className="orb-profile-verified">
               <ShieldCheck size={11} /> Verified
@@ -2313,6 +2383,7 @@ function OverviewTab({ employees, timeLogs, surveys, balanceSubmissions, account
 function EmployeesTab({ employees, onAdd, onSetPin, onToggleActive, onDelete, onChangeRole }) {
   const [name, setName] = useState("");
   const [role, setRole] = useState("tasker");
+  const [username, setUsername] = useState("");
   const [pin, setPin] = useState(genPin());
   const [addMsg, setAddMsg] = useState("");
   const [confirmId, setConfirmId] = useState(null);
@@ -2322,12 +2393,17 @@ function EmployeesTab({ employees, onAdd, onSetPin, onToggleActive, onDelete, on
   const [deleteId, setDeleteId] = useState(null);
   const [deleteTyped, setDeleteTyped] = useState("");
 
+  // [ADDED] Usernames are unique — only offer ones nobody has yet.
+  const usedUsernames = new Set(employees.map((e) => (e.username || "").toLowerCase()));
+  const availableUsernames = MARVEL_USERNAMES.filter((n) => !usedUsernames.has(n.toLowerCase()));
+
   function submitAdd() {
-    if (!name.trim() || !/^\d{4}$/.test(pin)) return;
-    onAdd(name.trim(), role, pin);
-    setAddMsg(`Added ${name.trim()}. Give them their new PIN separately.`);
+    if (!name.trim() || !username || !/^\d{4}$/.test(pin)) return;
+    onAdd(name.trim(), role, pin, username);
+    setAddMsg(`Added ${name.trim()}. Give them their username (${username}) and PIN separately.`);
     setName("");
     setRole("tasker");
+    setUsername("");
     setPin(genPin());
     setTimeout(() => setAddMsg(""), 4000);
   }
@@ -2367,18 +2443,27 @@ function EmployeesTab({ employees, onAdd, onSetPin, onToggleActive, onDelete, on
           <option value="tasker">Tasker</option>
           <option value="admin">Admin</option>
         </select>
+        <select className="orb-input" value={username} onChange={(e) => setUsername(e.target.value)}>
+          <option value="">Choose username…</option>
+          {availableUsernames.map((n) => (
+            <option key={n} value={n}>{n}</option>
+          ))}
+        </select>
         <PinField value={pin} onChange={setPin} />
         <button className="orb-icon-btn" title="Generate a new PIN" onClick={() => setPin(genPin())}><RefreshCw size={14} /></button>
-        <button className="orb-btn orb-btn-primary" disabled={!name.trim() || !/^\d{4}$/.test(pin)} onClick={submitAdd}><Plus size={15} /> Add</button>
+        <button className="orb-btn orb-btn-primary" disabled={!name.trim() || !username || !/^\d{4}$/.test(pin)} onClick={submitAdd}><Plus size={15} /> Add</button>
       </div>
-      <div className="orb-hint">New employee PIN: set it here or generate one, then give it to the employee. The PIN is not stored in browser employee data.</div>
+      <div className="orb-hint">Pick a username from the list (this is what they'll type at sign-in) and set or generate their PIN, then give both to the employee. The PIN is not stored in browser employee data.</div>
+      {availableUsernames.length === 0 && (
+        <div className="orb-banner orb-banner-warn" style={{ marginTop: 10 }}>Every username in the list is taken. Add more names to MARVEL_USERNAMES in the code to free up new ones.</div>
+      )}
       {addMsg && <div className="orb-banner orb-banner-info" style={{ marginTop: 10 }}>{addMsg}</div>}
 
       <div className="orb-subhead">Existing employees</div>
       <div className="orb-hint">Use the controls below to manage an existing employee. <strong>Change PIN</strong> changes their sign-in PIN without displaying or storing the PIN in the employee table.</div>
       <div className="orb-table-wrap">
       <table className="orb-table">
-        <thead><tr><th>Name</th><th>Role</th><th>Status</th><th>Actions</th></tr></thead>
+        <thead><tr><th>Name</th><th>Username</th><th>Role</th><th>Status</th><th>Actions</th></tr></thead>
         <tbody>
           {employees.map((e) => {
             const isLastAdmin = e.role === "admin" && e.active && adminCount <= 1;
@@ -2389,6 +2474,7 @@ function EmployeesTab({ employees, onAdd, onSetPin, onToggleActive, onDelete, on
                     <div style={{ fontWeight: 600 }}>{e.name}</div>
                     <div className="orb-hint" style={{ marginTop: 2 }}>ID: {e.id}</div>
                   </td>
+                  <td>{e.username || <span className="orb-hint">—</span>}</td>
                   <td>
                     <select
                       className="orb-input"
@@ -2440,7 +2526,7 @@ function EmployeesTab({ employees, onAdd, onSetPin, onToggleActive, onDelete, on
                 </tr>
                 {pinEditId === e.id && (
                   <tr className="orb-edit-row">
-                    <td colSpan={4}>
+                    <td colSpan={5}>
                       <div className="orb-pin-edit-row">
                         <strong>Change sign-in PIN for {e.name}</strong>
                         <PinField value={pinDraft} onChange={setPinDraft} autoFocus />
@@ -2458,7 +2544,7 @@ function EmployeesTab({ employees, onAdd, onSetPin, onToggleActive, onDelete, on
                 )}
                 {deleteId === e.id && (
                   <tr className="orb-edit-row orb-delete-row">
-                    <td colSpan={4}>
+                    <td colSpan={5}>
                       <div className="orb-error-text" style={{ margin: "0 0 8px" }}>
                         This permanently deletes {e.name} and all of their time logs, breaks, survey history, earnings, shifts, and task logs. This cannot be undone.
                       </div>
@@ -3535,7 +3621,7 @@ export default function App() {
       // feature (see the SQL migration) — sbSelect returns raw rows with
       // Postgres' snake_case column names, mapped to the app's camelCase
       // via employeeFromRow just below.
-      let empRows = await sbSelect("employees", "?select=id,name,role,active,email,phone,location,bio,avatar_url,notify_email,notify_push,notify_weekly_summary,public_profile,verified");
+      let empRows = await sbSelect("employees", "?select=id,name,role,active,username,email,phone,location,bio,avatar_url,notify_email,notify_push,notify_weekly_summary,public_profile,verified");
       if (empRows && empRows.length === 0) {
         // [CHANGED] Do not seed plaintext PINs into the employees table.
         // The database should already contain the initial users and hashed PINs.
@@ -3842,11 +3928,18 @@ export default function App() {
   // [CHANGED] New employees are created through a server-side RPC that hashes
   // the PIN before it is stored. The plaintext PIN exists only in this form
   // long enough to send it to Supabase.
-  const addEmployee = useCallback(async (name, role, pinInput) => {
+  // [CHANGED] Now also takes the username the admin picked from the Marvel
+  // dropdown. The RPC's signature is unchanged (it only ever knew about
+  // id/name/role/pin, and its internal PIN-hashing logic is opaque to the
+  // client) — username is a plain, non-PIN column, so it's written the same
+  // way the My Profile fields are: a direct row upsert right after the RPC
+  // confirms the row exists.
+  const addEmployee = useCallback(async (name, role, pinInput, username) => {
     const finalPin = /^\d{4}$/.test(pinInput || "") ? pinInput : genPin();
     const id = uid();
     if (!name.trim()) return null;
     if (role !== "admin" && role !== "tasker") return null;
+    if (!username) return null;
 
     const { data, error } = await callRpc("create_employee_with_pin", {
       p_id: id,
@@ -3860,10 +3953,11 @@ export default function App() {
       return null;
     }
 
-    const newEmp = { id, name: name.trim(), role, active: true };
+    const newEmp = { id, name: name.trim(), role, active: true, username };
+    await persist(sbUpsert("employees", [employeeToRow(newEmp)]));
     setEmployees((prev) => sortEmployees([...prev, newEmp]));
     return newEmp;
-  }, []);
+  }, [persist]);
 
   // [CHANGED] Existing-user PIN changes update pin_hash through the admin RPC.
   // No plaintext PIN is written to the employees table.
@@ -4627,7 +4721,7 @@ html, body { overflow-x: hidden; }
 .orb-input-narrow { width: 90px; flex: none; }
 .orb-form-col { display: flex; flex-direction: column; gap: 10px; }
 .orb-add-row { display: grid; grid-template-columns: 2fr 1fr auto; gap: 8px; margin-bottom: 8px; align-items: center; }
-.orb-add-row-pin { grid-template-columns: 2fr 1fr auto auto auto; }
+.orb-add-row-pin { grid-template-columns: 2fr 1fr 1fr auto auto auto; }
 .orb-pin-edit-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 13px; }
 .orb-filter-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 4px; }
 .orb-filter-row .orb-input { width: auto; min-width: 170px; }
