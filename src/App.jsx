@@ -4688,8 +4688,8 @@ html, body { overflow-x: hidden; }
      covers the small transform "lift" (kept a touch quicker than the color
      fade so a hover doesn't feel laggy). Change these two values to speed
      up or slow down every clickable element in the app at once. */
-  --hover-speed: .3s;
-  --hover-speed-fast: .25s;
+  --hover-speed: .55s;
+  --hover-speed-fast: .85s;
   font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Inter', 'Helvetica Neue', Arial, sans-serif;
   color: var(--ink);
   min-height: 100vh;
