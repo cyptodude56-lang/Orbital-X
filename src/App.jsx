@@ -760,6 +760,110 @@ function FloatingDollars() {
   );
 }
 
+/* [ADDED] Sign-in page only: a small set of hand-drawn "aspirational asset"
+   icons (coupe, house, cash stack, private jet) — more detailed than a
+   plain outline (a soft flat-tint silhouette via .lux-fill underneath a
+   stroked line drawing) so they read as "artistic" rather than clip-art,
+   while staying matte/flat — no gradients, no glow — per the brief. Each
+   is a standalone <svg> so LoginAssets below can scatter them at different
+   sizes/positions/colors. */
+function IconLuxCar() {
+  return (
+    <svg viewBox="0 0 200 100" fill="none">
+      <path className="lux-fill" d="M8 68c0 0 6-18 14-24 12-8 28-12 46-14l14 0c8-6 22-10 40-10 18 0 32 6 40 16l14 10c10 4 16 10 16 18l0 8c0 4-4 8-8 8l-176 0c-6 0-8-4-8-8z" />
+      <path d="M8 68c0 0 6-18 14-24 12-8 28-12 46-14l14 0c8-6 22-10 40-10 18 0 32 6 40 16l14 10c10 4 16 10 16 18l0 8c0 4-4 8-8 8l-176 0c-6 0-8-4-8-8z" stroke="currentColor" strokeWidth="2.2" strokeLinejoin="round" />
+      <path d="M84 30c8-6 20-8 36-8 16 0 28 5 36 13l-4 3-64 0z" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round" opacity="0.85" />
+      <line x1="122" y1="38" x2="122" y2="22" stroke="currentColor" strokeWidth="1.3" opacity="0.5" />
+      <circle className="lux-fill" cx="52" cy="80" r="16" />
+      <circle cx="52" cy="80" r="16" stroke="currentColor" strokeWidth="2.2" />
+      <circle cx="52" cy="80" r="5.5" stroke="currentColor" strokeWidth="1.5" />
+      <circle className="lux-fill" cx="158" cy="80" r="16" />
+      <circle cx="158" cy="80" r="16" stroke="currentColor" strokeWidth="2.2" />
+      <circle cx="158" cy="80" r="5.5" stroke="currentColor" strokeWidth="1.5" />
+      <line x1="28" y1="58" x2="58" y2="55" stroke="currentColor" strokeWidth="1.1" opacity="0.5" />
+    </svg>
+  );
+}
+function IconLuxHouse() {
+  return (
+    <svg viewBox="0 0 200 130" fill="none">
+      <path className="lux-fill" d="M20 70L100 15L180 70L180 112c0 4-4 8-8 8l-144 0c-4 0-8-4-8-8z" />
+      <path d="M20 70L100 15L180 70" stroke="currentColor" strokeWidth="2.4" strokeLinejoin="round" strokeLinecap="round" />
+      <path d="M20 70L20 112c0 4 4 8 8 8l144 0c4 0 8-4 8-8L180 70" stroke="currentColor" strokeWidth="2.2" strokeLinejoin="round" />
+      <rect x="44" y="78" width="26" height="26" rx="2" stroke="currentColor" strokeWidth="1.7" />
+      <line x1="57" y1="78" x2="57" y2="104" stroke="currentColor" strokeWidth="1.1" opacity="0.6" />
+      <line x1="44" y1="91" x2="70" y2="91" stroke="currentColor" strokeWidth="1.1" opacity="0.6" />
+      <rect x="130" y="78" width="26" height="26" rx="2" stroke="currentColor" strokeWidth="1.7" />
+      <line x1="143" y1="78" x2="143" y2="104" stroke="currentColor" strokeWidth="1.1" opacity="0.6" />
+      <line x1="130" y1="91" x2="156" y2="91" stroke="currentColor" strokeWidth="1.1" opacity="0.6" />
+      <rect x="90" y="88" width="20" height="32" rx="2" stroke="currentColor" strokeWidth="1.7" />
+      <circle cx="105" cy="104" r="1.6" fill="currentColor" />
+      {/* Chimney: bottom edge sits exactly on the roofline at x=142-154
+          (interpolated along the 100,15→180,70 slope) so it reads as
+          resting on the roof instead of floating above it. */}
+      <rect x="142" y="29" width="12" height="20" stroke="currentColor" strokeWidth="1.4" opacity="0.75" />
+    </svg>
+  );
+}
+function IconLuxCash() {
+  return (
+    <svg viewBox="0 0 180 110" fill="none">
+      <rect className="lux-fill" x="24" y="70" width="132" height="26" rx="5" />
+      <rect x="24" y="70" width="132" height="26" rx="5" stroke="currentColor" strokeWidth="2" />
+      <rect className="lux-fill" x="32" y="54" width="122" height="20" rx="5" />
+      <rect x="32" y="54" width="122" height="20" rx="5" stroke="currentColor" strokeWidth="2" />
+      <rect className="lux-fill" x="40" y="38" width="112" height="20" rx="5" />
+      <rect x="40" y="38" width="112" height="20" rx="5" stroke="currentColor" strokeWidth="2" />
+      <circle cx="96" cy="48" r="8" stroke="currentColor" strokeWidth="1.5" />
+      <text x="96" y="52" textAnchor="middle" fontSize="11" fontWeight="700" fill="currentColor" stroke="none">$</text>
+      <circle cx="90" cy="83" r="7" stroke="currentColor" strokeWidth="1.5" />
+      <text x="90" y="87" textAnchor="middle" fontSize="9" fontWeight="700" fill="currentColor" stroke="none">$</text>
+      <line x1="24" y1="83" x2="156" y2="83" stroke="currentColor" strokeWidth="1" opacity="0.35" />
+    </svg>
+  );
+}
+function IconLuxPlane() {
+  return (
+    <svg viewBox="0 0 220 110" fill="none">
+      <path className="lux-fill" d="M14 58L110 48 150 16 168 20 142 50 200 54 206 62 142 66 168 96 150 100 110 68 14 64z" />
+      <path d="M14 58L110 48 150 16 168 20 142 50 200 54 206 62 142 66 168 96 150 100 110 68 14 64z" stroke="currentColor" strokeWidth="2.2" strokeLinejoin="round" />
+      <circle cx="60" cy="56" r="2" fill="currentColor" opacity="0.7" />
+      <circle cx="76" cy="55.5" r="2" fill="currentColor" opacity="0.7" />
+      <circle cx="92" cy="55" r="2" fill="currentColor" opacity="0.7" />
+      <line x1="108" y1="58" x2="128" y2="58" stroke="currentColor" strokeWidth="1.3" opacity="0.5" />
+    </svg>
+  );
+}
+
+// [ADDED] Replaces the app-wide $ layer specifically on the sign-in screen
+// (see the `showDollars` check in App() — FloatingDollars is skipped while
+// on the login screen so this is the only ambient motion there) with the
+// "aspirational asset" icons above: cars, houses, cash, private jets —
+// burnt orange kept prominent (roughly 2:1 over sage) per the brief.
+function LoginAssets() {
+  const items = [
+    { Icon: IconLuxCar, cls: "a1 orange" },
+    { Icon: IconLuxHouse, cls: "a2 sage" },
+    { Icon: IconLuxCash, cls: "a3 orange" },
+    { Icon: IconLuxPlane, cls: "a4 orange" },
+    { Icon: IconLuxCar, cls: "a5 sage" },
+    { Icon: IconLuxCash, cls: "a6 orange" },
+    { Icon: IconLuxHouse, cls: "a7 orange" },
+    { Icon: IconLuxPlane, cls: "a8 sage" },
+    { Icon: IconLuxCar, cls: "a9 orange" },
+    { Icon: IconLuxHouse, cls: "a10 orange" },
+  ];
+  return (
+    <div className="orb-login-assets" aria-hidden="true">
+      {items.map(({ Icon, cls }, i) => (
+        <div className={`orb-login-asset ${cls}`} key={i}>
+          <Icon />
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function OrbitDial({ active, paused, fractionOfHour, primary, secondary }) {
   const r = 54, c = 2 * Math.PI * r;
   const frac = Math.max(0, Math.min(1, fractionOfHour));
@@ -912,32 +1016,20 @@ function LoginScreen({ employees, onLogin, dbOk, onRetryDb, checkingDb }) {
 
   return (
     <div className="orb-login">
-      {/* [ADDED] Dark, brand-colored ambient glow — recolored from the
-          reference mockup's blue-grey blobs to Orbital X's own navy/amber/
-          brand-blue tokens, sitting behind the card on top of the app-wide
-          FloatingDollars layer (rendered once at the .orb-app root, still
-          the only $ animation). */}
-      <div className="orb-login-glow orb-login-glow-1" aria-hidden="true" />
-      <div className="orb-login-glow orb-login-glow-2" aria-hidden="true" />
-      <div className="orb-login-glow orb-login-glow-3" aria-hidden="true" />
+      {/* [CHANGED] Sage/burnt-orange "aspirational asset" icons (cars,
+          houses, cash, jets) replace the app-wide $ layer on this screen —
+          FloatingDollars is skipped entirely while on login (see App()). */}
+      <LoginAssets />
 
       <div className="orb-login-frame">
-        {/* [ADDED] The logo now sits as its own badge straddling the top
-            edge of the card, instead of stacked inside it. */}
+        {/* The logo sits as its own badge straddling the top edge of the
+            card, instead of stacked inside it — unchanged from before. */}
         <div className="orb-login-badge">
           <OrbitMark size={26} />
           <span className="orb-wordmark">Orbital X</span>
         </div>
 
         <div className="orb-login-card">
-          {/* [ADDED] Slow-drifting glints inside the glass, recolored to
-              amber/brand-blue instead of the reference's white/blue. */}
-          <div className="orb-login-streaks" aria-hidden="true">
-            <span className="orb-login-streak s1" />
-            <span className="orb-login-streak s2" />
-            <span className="orb-login-streak s3" />
-          </div>
-
           <div className="orb-tagline">Intelligence in Motion</div>
           <p className="orb-login-sub">Clock in, log your work, done.</p>
 
@@ -4288,10 +4380,16 @@ export default function App() {
   return (
     <div className="orb-app">
       <style>{CSS}</style>
-      <FloatingDollars />
+      {/* [CHANGED] The $ layer now skips the sign-in screen — LoginScreen
+          renders its own sage/burnt-orange asset icons instead (see
+          LoginAssets). Loading and the signed-in app keep the $ signs. */}
+      {(loading || currentUser) && <FloatingDollars />}
       {loading ? (
         <div className="orb-loading">
-          <OrbitMark size={32} />
+          <div className="orb-loading-mark">
+            <OrbitMark size={32} />
+            <div className="orb-loading-ring" aria-hidden="true" />
+          </div>
           <span>Loading Orbital X…</span>
         </div>
       ) : !currentUser ? (
@@ -4504,7 +4602,16 @@ html, body { overflow-x: hidden; }
 .orb-app * { box-sizing: border-box; }
 .orb-app h1, .orb-app h2, .orb-app h3, .orb-wordmark { font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Inter', 'Helvetica Neue', Arial, sans-serif; letter-spacing: -0.015em; }
 
-.orb-loading { min-height: 100vh; display: flex; align-items: center; justify-content: center; gap: 10px; color: var(--ink-soft); }
+/* [CHANGED] Sage green now shows up here too, not just on the sign-in
+   page — a faint wash behind the mark plus a two-tone sage/burnt-orange
+   spinner ring, so the loading → login handoff feels like one palette. */
+.orb-loading { min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; color: var(--ink-soft); position: relative; background: radial-gradient(ellipse 60% 45% at 50% 40%, rgba(125,148,121,0.16) 0%, transparent 68%); }
+.orb-loading-mark { position: relative; width: 64px; height: 64px; display: flex; align-items: center; justify-content: center; }
+.orb-loading-ring { position: absolute; inset: 0; border-radius: 50%; border: 3px solid rgba(125,148,121,0.25); border-top-color: #B5532A; border-right-color: #B5532A; animation: orb-loading-spin 1s linear infinite; }
+@keyframes orb-loading-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) {
+  .orb-loading-ring { animation: none; border-top-color: rgba(125,148,121,0.25); border-right-color: rgba(125,148,121,0.25); }
+}
 
 /* ---- Floating $ ambient background (every screen, incl. login) ---- */
 .orb-dollar-bg { position: fixed; inset: 0; pointer-events: none; z-index: 5; overflow: hidden; }
@@ -4538,80 +4645,109 @@ html, body { overflow-x: hidden; }
 }
 
 /* ---- Login ---- */
-/* [CHANGED] Restyled after a reference mockup ("slow lightning"): a dark,
-   frosted-glass card floating on its own navy/amber/brand-blue backdrop —
-   recolored from that reference's blue-grey palette to Orbital X's own
-   tokens (reusing the exact rgba(15,26,44, …) navy already used by
-   .orb-header/.orb-sidebar, so it reads as the same app, just darker here),
-   more transparent than a solid card, and with much less corner rounding
-   than the reference (6-14px here vs. its 42px). Every element that used
-   to assume a light card background (dark ink text, faint borders/shadows
-   meant to read against white) gets a scoped override below so it stays
-   legible against the dark glass — the rest of the app is untouched. */
-.orb-login { min-height: 100vh; display: flex; align-items: center; justify-content: center; position: relative; overflow: hidden; padding: 24px 24px 48px; background: radial-gradient(circle at 16% 18%, rgba(27,178,235,0.16) 0%, transparent 42%), radial-gradient(circle at 86% 82%, rgba(245,176,66,0.14) 0%, transparent 46%), linear-gradient(165deg, #0B111C 0%, #0F1A2C 55%, #0A0F1A 100%); }
+/* [CHANGED] Restyled again after a second reference mockup ("Ambition"):
+   sage green + burnt orange (orange kept prominent), replacing the earlier
+   dark navy/amber take. Light, warm-ivory glass instead of dark glass —
+   majorly transparent, a subtly-visible border instead of a heavy one, no
+   text-shadow "halo" anywhere, no gradients/gloss on the button (flat
+   matte fill only). Logo badge + card frame structure is unchanged from
+   before, per the brief — only the color system, the background motion
+   (LoginAssets' cars/houses/cash/jets instead of glow blobs or $ signs),
+   and the floaty text motion are new. Every shared class re-themed below
+   (.orb-input, .orb-hint, .orb-banner, …) is scoped to .orb-login only —
+   the rest of the app keeps its own light theme untouched. */
+.orb-login { min-height: 100vh; display: flex; align-items: center; justify-content: center; position: relative; overflow: hidden; padding: 24px 24px 48px; background: radial-gradient(ellipse 70% 55% at 12% 8%, rgba(125,148,121,0.38) 0%, transparent 62%), radial-gradient(ellipse 65% 60% at 88% 92%, rgba(125,148,121,0.32) 0%, transparent 65%), radial-gradient(ellipse 90% 70% at 50% 50%, rgba(181,83,42,0.07) 0%, transparent 70%), linear-gradient(160deg, #EEF2EA 0%, #E6ECE2 45%, #DFE7DA 100%); }
 
-.orb-login-glow { position: absolute; z-index: 1; border-radius: 50%; filter: blur(70px); pointer-events: none; will-change: transform, opacity; animation: orb-login-drift linear infinite alternate; }
-.orb-login-glow-1 { width: 340px; height: 340px; top: -90px; left: -80px; background: rgba(245,176,66,0.30); animation-duration: 34s; }
-.orb-login-glow-2 { width: 460px; height: 460px; bottom: -140px; right: -110px; background: rgba(27,178,235,0.24); animation-duration: 42s; animation-delay: -10s; }
-.orb-login-glow-3 { width: 240px; height: 240px; top: 38%; left: 68%; background: rgba(255,255,255,0.10); animation-duration: 30s; animation-delay: -18s; }
-@keyframes orb-login-drift { 0% { transform: translate(0,0) scale(1); } 100% { transform: translate(36px,-26px) scale(1.15); } }
+/* [ADDED] The floating luxury-asset icons (see LoginAssets/IconLux*) —
+   burnt orange kept prominent (2:1 over sage), matte flat tint only (no
+   gradient fill), slow and upward-biased so the drift reads as "rising" /
+   aspirational rather than random wander — fits the target audience of a
+   younger workforce without tipping into anything glossy or cartoonish. */
+.orb-login-assets { position: absolute; inset: 0; z-index: 1; overflow: hidden; pointer-events: none; }
+.orb-login-asset { position: absolute; opacity: 0.32; animation: orb-login-asset-float linear infinite; }
+.orb-login-asset svg { display: block; width: 100%; height: 100%; }
+.orb-login-asset .lux-fill { fill: currentColor; opacity: 0.16; }
+.orb-login-asset.orange { color: #B5532A; }
+.orb-login-asset.sage { color: #7D9479; }
+.orb-login-asset.a1  { width: 190px; top: 6%;   left: 3%;   animation-duration: 46s; animation-delay: 0s; }
+.orb-login-asset.a2  { width: 210px; bottom: 10%; right: 4%; animation-duration: 54s; animation-delay: -10s; }
+.orb-login-asset.a3  { width: 140px; top: 50%;  left: 6%;   animation-duration: 40s; animation-delay: -22s; }
+.orb-login-asset.a4  { width: 220px; top: 10%;  right: 8%;  animation-duration: 58s; animation-delay: -6s; }
+.orb-login-asset.a5  { width: 170px; bottom: 6%; left: 22%; animation-duration: 50s; animation-delay: -30s; }
+.orb-login-asset.a6  { width: 120px; top: 76%;  left: 62%;  animation-duration: 38s; animation-delay: -16s; }
+.orb-login-asset.a7  { width: 150px; top: 32%;  right: 3%;  animation-duration: 44s; animation-delay: -26s; }
+.orb-login-asset.a8  { width: 200px; top: 2%;   left: 40%;  animation-duration: 52s; animation-delay: -8s; }
+.orb-login-asset.a9  { width: 110px; top: 66%;  left: 34%;  animation-duration: 36s; animation-delay: -14s; }
+.orb-login-asset.a10 { width: 160px; top: 20%;  left: -3%;  animation-duration: 48s; animation-delay: -34s; }
+@keyframes orb-login-asset-float {
+  0%   { transform: translate(0,0) rotate(0deg) scale(1); opacity: 0.28; }
+  20%  { transform: translate(14px,-26px) rotate(2deg) scale(1.04); opacity: 0.5; }
+  45%  { transform: translate(-10px,-52px) rotate(-1.5deg) scale(0.98); opacity: 0.58; }
+  70%  { transform: translate(18px,-30px) rotate(1.5deg) scale(1.05); opacity: 0.44; }
+  100% { transform: translate(0,0) rotate(0deg) scale(1); opacity: 0.28; }
+}
+@media (max-width: 460px) { .orb-login-asset { opacity: 0.22; } }
 
 .orb-login-frame { position: relative; z-index: 2; width: 100%; max-width: 420px; }
-/* [ADDED] The logo badge straddles the card's top edge (per the mockup's
-   "logo on top of the container" note) instead of sitting inside it. */
-.orb-login-badge { position: absolute; top: 0; left: 50%; transform: translate(-50%, -50%); z-index: 3; display: flex; align-items: center; gap: 9px; background: linear-gradient(150deg, #16233A 0%, #0A111D 100%); border: 1px solid rgba(255,255,255,0.14); border-radius: 12px; padding: 10px 20px; box-shadow: 0 14px 30px -12px rgba(0,0,0,0.65), 0 0 0 1px rgba(245,176,66,0.1) inset; }
-.orb-login-badge .orb-wordmark { color: #fff; text-shadow: none; }
+/* The logo badge straddles the card's top edge, same placement as before —
+   just re-tinted to the new warm-ivory palette instead of dark navy. */
+.orb-login-badge { position: absolute; top: 0; left: 50%; transform: translate(-50%, -50%); z-index: 3; display: flex; align-items: center; gap: 9px; background: linear-gradient(150deg, rgba(255,253,249,0.92) 0%, rgba(238,242,234,0.88) 100%); border: 1px solid rgba(47,61,51,0.16); border-radius: 12px; padding: 10px 20px; box-shadow: 0 14px 28px -16px rgba(47,61,51,0.32), 0 0 0 1px rgba(181,83,42,0.08) inset; }
+.orb-login-badge .orb-wordmark { color: #2F3D33; text-shadow: none; }
 
-/* [CHANGED] More transparent (rgba alpha ~0.5 vs. a solid card) and much
-   less rounded than the reference's 42px — 14px keeps a touch of softness
-   under the squared-off badge without matching the rest of the app's
-   sharper 5-6px cards exactly, since this card is a bigger, standalone
-   surface. overflow:hidden clips the streaks below to the card's shape. */
-.orb-login-card { position: relative; z-index: 2; width: 100%; max-width: 420px; background: rgba(15,26,44,0.5); backdrop-filter: blur(16px) saturate(160%); -webkit-backdrop-filter: blur(16px) saturate(160%); border: 1px solid rgba(255,255,255,0.12); border-radius: 14px; padding: 42px 30px 30px; box-shadow: 0 30px 60px -24px rgba(0,0,0,0.7), 0 0 0 1px rgba(255,255,255,0.04) inset; overflow: hidden; }
-
-/* Slow-drifting glints inside the glass — same idea as the reference's
-   "slow lightning" streaks, recolored to amber/brand-blue and toned down. */
-.orb-login-streaks { position: absolute; inset: 0; pointer-events: none; z-index: 0; overflow: hidden; border-radius: inherit; }
-.orb-login-streak { position: absolute; width: 3px; height: 3px; border-radius: 50%; filter: blur(1px); opacity: 0; will-change: transform, opacity; }
-.orb-login-streak.s1 { top: 14%; left: 8%; background: rgba(245,176,66,0.9); box-shadow: 0 0 22px 7px rgba(245,176,66,0.55); animation: orb-login-streak-1 22s infinite ease-in-out; }
-.orb-login-streak.s2 { top: 72%; left: 85%; width: 4px; height: 4px; background: rgba(150,215,255,0.9); box-shadow: 0 0 26px 9px rgba(27,178,235,0.5); animation: orb-login-streak-2 27s infinite ease-in-out; animation-delay: 4s; }
-.orb-login-streak.s3 { top: 40%; left: 20%; background: rgba(255,255,255,0.85); box-shadow: 0 0 18px 6px rgba(255,255,255,0.4); animation: orb-login-streak-3 33s infinite ease-in-out; animation-delay: 9s; }
-@keyframes orb-login-streak-1 { 0% { transform: translate(0,0) scale(0.8); opacity: 0; } 15% { opacity: 0.8; transform: translate(30px,26px) scale(1.5); } 50% { opacity: 0.4; transform: translate(120px,40px) scale(1.1); } 80% { opacity: 0.7; transform: translate(220px,80px) scale(1.6); } 100% { opacity: 0; transform: translate(300px,120px) scale(0.7); } }
-@keyframes orb-login-streak-2 { 0% { transform: translate(0,0) scale(0.7); opacity: 0; } 18% { opacity: 0.8; transform: translate(-45px,-24px) scale(1.5); } 55% { opacity: 0.5; transform: translate(-160px,-10px) scale(1.3); } 100% { opacity: 0; transform: translate(-280px,50px) scale(0.6); } }
-@keyframes orb-login-streak-3 { 0% { transform: translate(0,0) scale(0.6); opacity: 0; } 20% { opacity: 0.7; transform: translate(24px,-30px) scale(1.4); } 60% { opacity: 0.4; transform: translate(100px,-70px) scale(1.7); } 100% { opacity: 0; transform: translate(190px,-130px) scale(0.8); } }
+/* [CHANGED] "Majorly transparent" — a thin warm-ivory tint over the sage
+   backdrop, not a solid panel — with a subtly-visible border (vs. none) so
+   the container still reads as a card. Corner rounding is unchanged from
+   before, per the brief ("maintain the current look" of the container). */
+.orb-login-card { position: relative; z-index: 2; width: 100%; max-width: 420px; background: rgba(255,253,249,0.22); backdrop-filter: blur(18px) saturate(130%); -webkit-backdrop-filter: blur(18px) saturate(130%); border: 1px solid rgba(47,61,51,0.18); border-radius: 14px; padding: 42px 30px 30px; box-shadow: 0 30px 60px -30px rgba(47,61,51,0.28); overflow: hidden; }
 
 .orb-brand { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .orb-wordmark { font-weight: 700; font-size: 22px; letter-spacing: -0.02em; color: var(--navy); text-shadow: var(--text-halo); }
 .orb-wordmark-sm { font-size: 17px; color: #fff; text-shadow: none; }
-.orb-tagline { color: var(--brand-blue); font-size: 10.5px; font-weight: 700; letter-spacing: 2.5px; text-transform: uppercase; margin: 2px 0 0 44px; text-shadow: }
-.orb-login-sub { color: var(--ink-soft); margin: 6px 0 22px; font-size: 14.5px; text-shadow: }
+.orb-tagline { color: var(--brand-blue); font-size: 10.5px; font-weight: 700; letter-spacing: 2.5px; text-transform: uppercase; margin: 2px 0 0 44px; text-shadow: var(--text-halo); }
+.orb-login-sub { color: var(--ink-soft); margin: 6px 0 22px; font-size: 14.5px; text-shadow: var(--text-halo); }
 
-/* [ADDED] Scoped overrides so every element inside the now-dark login card
-   stays legible — everything below this point re-themes existing shared
-   classes (.orb-input, .orb-hint, .orb-banner, …) only within .orb-login,
-   leaving their light-background styling untouched everywhere else. */
-.orb-login-card > .orb-tagline { position: relative; z-index: 1; margin-left: 0; text-align: center; color: #9ED4EE; }
-.orb-login-card > .orb-login-sub { position: relative; z-index: 1; text-align: center; color: rgba(255,255,255,0.62); }
+/* [CHANGED] Scoped overrides, re-themed sage/burnt-orange on warm ivory —
+   everything below re-themes existing shared classes (.orb-input,
+   .orb-hint, .orb-banner, …) only within .orb-login, leaving their normal
+   light-app styling untouched everywhere else. No text-shadow anywhere —
+   "no halo" — and the button is a flat solid fill, no gradient. */
+.orb-login-card > .orb-tagline { position: relative; z-index: 1; margin-left: 0; text-align: center; color: #B5532A; text-shadow: none; animation: orb-login-float 6.4s ease-in-out infinite; }
+.orb-login-card > .orb-login-sub { position: relative; z-index: 1; text-align: center; color: #5F6E63; text-shadow: none; animation: orb-login-float 7s ease-in-out infinite; animation-delay: -1.2s; }
 .orb-login .orb-pin-panel, .orb-login .orb-banner { position: relative; z-index: 1; }
-.orb-login .orb-field-label { color: rgba(255,255,255,0.6); }
-.orb-login .orb-hint { color: rgba(255,255,255,0.5); }
-.orb-login .orb-error-text { color: #FF9A8F; }
-.orb-login .orb-pin-who { color: #fff; }
-.orb-login .orb-avatar { box-shadow: 0 0 0 2px rgba(255,255,255,0.12); }
-.orb-login .orb-input, .orb-login .orb-pin-input { background: rgba(255,255,255,0.07); border-color: rgba(255,255,255,0.18); color: #fff; }
-.orb-login .orb-input::placeholder { color: rgba(255,255,255,0.35); }
-.orb-login .orb-input:focus, .orb-login .orb-pin-input:focus { border-color: rgba(245,176,66,0.6); background: rgba(255,255,255,0.1); outline-color: var(--amber); box-shadow: 0 0 0 3px rgba(245,176,66,0.14); }
-.orb-login .orb-pindot { background: rgba(255,255,255,0.22); }
-.orb-login .orb-link-btn { color: rgba(255,255,255,0.75); }
-.orb-login .orb-link-btn:hover { color: #fff; opacity: 1; }
-.orb-login .orb-banner { border-color: rgba(255,255,255,0.14); }
-.orb-login .orb-banner-info { background: rgba(245,176,66,0.16); color: #FFDCA3; }
-.orb-login .orb-banner-warn { background: rgba(210,86,78,0.2); color: #FFC2BC; }
-.orb-login .orb-link-btn-warn { color: #FFC2BC; }
+.orb-login .orb-field-label { color: #7A8A7E; text-shadow: none; animation: orb-login-float 6.8s ease-in-out infinite; animation-delay: -2.4s; }
+.orb-login .orb-hint { color: #5F6E63; text-shadow: none; animation: orb-login-float 7.4s ease-in-out infinite; animation-delay: -3.6s; }
+.orb-login .orb-error-text { color: #9C3B26; text-shadow: none; }
+.orb-login .orb-pin-who { color: #2F3D33; text-shadow: none; animation: orb-login-float 6.6s ease-in-out infinite; animation-delay: -0.8s; }
+.orb-login .orb-avatar { background: #B5532A; color: #FFFDF9; box-shadow: 0 0 0 2px rgba(255,253,249,0.6); text-shadow: none; }
+.orb-login .orb-input, .orb-login .orb-pin-input { background: rgba(255,253,249,0.28); border-color: rgba(47,61,51,0.22); color: #2F3D33; }
+.orb-login .orb-input::placeholder { color: rgba(95,110,99,0.55); }
+.orb-login .orb-input:focus, .orb-login .orb-pin-input:focus { border-color: #B5532A; background: rgba(255,253,249,0.42); outline-color: #B5532A; box-shadow: 0 0 0 3px rgba(181,83,42,0.14); }
+.orb-login .orb-pindot { background: rgba(47,61,51,0.18); }
+.orb-login .orb-pindot.filled { background: #B5532A; }
+.orb-login .orb-link-btn { color: #B5532A; text-shadow: none; }
+.orb-login .orb-link-btn:hover { color: #8C3F1F; opacity: 1; }
+.orb-login .orb-banner { border-color: rgba(47,61,51,0.16); }
+.orb-login .orb-banner-info { background: rgba(181,83,42,0.12); color: #8C3F1F; }
+.orb-login .orb-banner-warn { background: rgba(156,59,38,0.14); color: #7A2E1A; }
+.orb-login .orb-link-btn-warn { color: #7A2E1A; }
+/* Flat, matte burnt orange — no gradient, no glow, just a solid fill and a
+   one-time diagonal sheen pass on hover (never a resting glossy look). */
+.orb-login .orb-btn-primary { background: #B5532A; color: #FFFDF9; box-shadow: none; position: relative; overflow: hidden; }
+.orb-login .orb-btn-primary::after { content: ""; position: absolute; inset: 0; background: linear-gradient(100deg, transparent 35%, rgba(255,253,249,0.22) 50%, transparent 65%); transform: translateX(-120%); }
+.orb-login .orb-btn-primary:hover:not(:disabled) { background: #A1471F; transform: translateY(-1px); }
+.orb-login .orb-btn-primary:hover:not(:disabled)::after { animation: orb-login-sweep 0.85s ease forwards; }
+.orb-login .orb-btn-primary:active:not(:disabled) { background: #8C3F1F; transform: translateY(0); }
+@keyframes orb-login-sweep { to { transform: translateX(120%); } }
+
+/* [ADDED] "Texts seem like they're floating" — a slow, subtle vertical
+   bob, no shadow trick involved (that's the halo we removed). Staggered
+   delays above keep the card's various labels/hints from bobbing in sync,
+   which reads as organic rather than mechanical. */
+@keyframes orb-login-float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-5px); } }
 
 @media (prefers-reduced-motion: reduce) {
-  .orb-login-glow, .orb-login-streak { animation: none !important; }
-  .orb-login-streak { opacity: 0.25; }
+  .orb-login-asset { animation: none !important; opacity: 0.18; }
+  .orb-login-card > .orb-tagline, .orb-login-card > .orb-login-sub, .orb-login .orb-field-label, .orb-login .orb-hint, .orb-login .orb-pin-who { animation: none !important; }
 }
 
 .orb-employee-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
@@ -4623,16 +4759,16 @@ html, body { overflow-x: hidden; }
 .orb-avatar-sm { width: 26px; height: 26px; font-size: 12px; }
 
 .orb-pin-panel { display: flex; flex-direction: column; gap: 6px; }
-.orb-pin-who { display: flex; align-items: center; gap: 10px; font-weight: 600; font-size: 16px; margin: 4px 0 14px; text-shadow: }
+.orb-pin-who { display: flex; align-items: center; gap: 10px; font-weight: 600; font-size: 16px; margin: 4px 0 14px; text-shadow: var(--text-halo); }
 .orb-back { align-self: flex-start; display: flex; align-items: center; gap: 4px; margin-bottom: 10px; }
-.orb-field-label { font-size: 12.5px; color: var(--ink-soft); font-weight: 600; margin-bottom: 4px; text-shadow:  }
+.orb-field-label { font-size: 12.5px; color: var(--ink-soft); font-weight: 600; margin-bottom: 4px; text-shadow: var(--text-halo); }
 .orb-pin-input { width: 100%; font-size: 22px; font-weight: 700; letter-spacing: 8px; text-align: center; padding: 12px; border-radius: 5px; border: 1px solid var(--line-strong); background: var(--surface-translucent); color: var(--ink); transition: border-color var(--hover-speed) ease; font-variant-numeric: tabular-nums; }
 .orb-pin-input:focus { outline: 2px solid var(--amber); outline-offset: 1px; }
 .orb-pindots { display: flex; gap: 8px; justify-content: center; margin: 10px 0 4px; }
 .orb-pindot { width: 9px; height: 9px; border-radius: 50%; background: var(--line-strong); }
 .orb-pindot.filled { background: var(--amber); }
-.orb-error-text { color: var(--rose); font-size: 13px; text-align: center; margin: 4px 0; text-shadow: }
-.orb-hint { color: var(--ink-soft); font-size: 12.5px; margin-top: 10px; text-shadow:  }
+.orb-error-text { color: var(--rose); font-size: 13px; text-align: center; margin: 4px 0; text-shadow: var(--text-halo); }
+.orb-hint { color: var(--ink-soft); font-size: 12.5px; margin-top: 10px; text-shadow: var(--text-halo); }
 .orb-shake { animation: orb-shake .4s; }
 @keyframes orb-shake { 0%,100%{transform:translateX(0)} 25%{transform:translateX(-6px)} 75%{transform:translateX(6px)} }
 
@@ -4653,7 +4789,14 @@ html, body { overflow-x: hidden; }
    above it in stacking, z-index 20 vs 5). A translucent navy + blur lets
    the $ signs drift across them too, softened rather than sharp, so
    header/sidebar text stays legible. */
-.orb-header { background: rgba(15,26,44,0.86); backdrop-filter: blur(8px); color: #fff; padding: 12px 20px; display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; height: 68px; box-shadow: 0 4px 20px rgba(15,26,44,0.15); flex-shrink: 0; position: sticky; top: 0; z-index: 20; }
+/* [CHANGED] height:68px → min-height:68px. A fixed height combined with
+   flex-wrap meant that on narrow screens, once .orb-header-right (clock +
+   name + My Profile + Sign out) didn't fit on one line and wrapped, the
+   header's box stayed locked at 68px tall — so the wrapped second row
+   rendered outside that box and ended up hidden behind whatever came next
+   in the page (still clickable, since it was still there, just invisible).
+   min-height lets the sticky header actually grow to fit a wrapped row. */
+.orb-header { background: rgba(15,26,44,0.86); backdrop-filter: blur(8px); color: #fff; padding: 12px 20px; display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; min-height: 68px; box-shadow: 0 4px 20px rgba(15,26,44,0.15); flex-shrink: 0; position: sticky; top: 0; z-index: 20; }
 .orb-header-right { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
 .orb-header-clock { font-size: 12.5px; color: rgba(255,255,255,0.85); font-weight: 600; font-variant-numeric: tabular-nums; }
 .orb-header-user { display: flex; align-items: center; gap: 6px; font-size: 13.5px; font-weight: 600; }
@@ -4977,6 +5120,11 @@ html, body { overflow-x: hidden; }
   .orb-body { padding: 14px; }
   .orb-clock-top { flex-direction: column; align-items: center; text-align: center; }
   .orb-header { padding: 10px 14px; }
+  /* [ADDED] Once the header wraps to two rows (see min-height note above),
+     tuck the date/time away to leave room for the name + buttons, and
+     right-align that wrapped row instead of it hugging the left edge. */
+  .orb-header-clock { display: none; }
+  .orb-header-right { margin-left: auto; }
   .orb-add-row, .orb-add-row-pin, .orb-earnings-add-row { grid-template-columns: 1fr; }
   .orb-employee-grid { grid-template-columns: 1fr 1fr; }
   .orb-schedule-form { grid-template-columns: 1fr 1fr; }
