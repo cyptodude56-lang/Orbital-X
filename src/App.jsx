@@ -2622,7 +2622,7 @@ function EmployeesTab({ employees, onAdd, onSetPin, onSetUsername, onToggleActiv
       <div className="orb-subhead">Existing employees</div>
       <div className="orb-hint">Use the controls below to manage an existing employee. <strong>Change PIN</strong> changes their sign-in PIN without displaying or storing the PIN in the employee table.</div>
       <div className="orb-table-wrap">
-      <table className="orb-table">
+      <table className="orb-table orb-emp-table">
         <thead><tr><th>Name</th><th>Username</th><th>Role</th><th>Status</th><th>Actions</th></tr></thead>
         <tbody>
           {employees.map((e) => {
@@ -2630,12 +2630,12 @@ function EmployeesTab({ employees, onAdd, onSetPin, onSetUsername, onToggleActiv
             return (
               <React.Fragment key={e.id}>
                 <tr>
-                  <td>
+                  <td data-label="Name">
                     <div style={{ fontWeight: 600 }}>{e.name}</div>
                     <div className="orb-hint" style={{ marginTop: 2 }}>ID: {e.id}</div>
                   </td>
-                  <td>{e.username || <span className="orb-hint">—</span>}</td>
-                  <td>
+                  <td data-label="Username">{e.username || <span className="orb-hint">—</span>}</td>
+                  <td data-label="Role">
                     <select
                       className="orb-input"
                       value={e.role}
@@ -2646,30 +2646,30 @@ function EmployeesTab({ employees, onAdd, onSetPin, onSetUsername, onToggleActiv
                       <option value="admin">Admin</option>
                     </select>
                   </td>
-                  <td>
+                  <td data-label="Status">
                     <span className={`orb-badge ${e.active ? "orb-badge-live" : "orb-badge-muted"}`}>
                       {e.active ? "Active" : "Inactive"}
                     </span>
                   </td>
-                  <td className="orb-row-actions">
+                  <td className="orb-row-actions" data-label="Actions">
                     <button className="orb-btn orb-btn-primary orb-btn-sm" onClick={() => startPinEdit(e)}>
                       <KeyRound size={13} /> Change PIN
                     </button>
-                    <button className="orb-btn orb-btn-ghost orb-btn-sm" onClick={() => startUsernameEdit(e)}>
+                    <button className="orb-btn orb-btn-ghost-dark orb-btn-sm" onClick={() => startUsernameEdit(e)}>
                       <UserRound size={13} /> {e.username ? "Change" : "Set"} username
                     </button>
                     {confirmId === e.id ? (
                       <>
-                        <button className="orb-btn orb-btn-ghost orb-btn-sm" onClick={() => { onToggleActive(e.id); setConfirmId(null); }}>
+                        <button className="orb-btn orb-btn-ghost-dark orb-btn-sm" onClick={() => { onToggleActive(e.id); setConfirmId(null); }}>
                           <Check size={13} /> Confirm
                         </button>
-                        <button className="orb-btn orb-btn-ghost orb-btn-sm" onClick={() => setConfirmId(null)}>
+                        <button className="orb-btn orb-btn-ghost-dark orb-btn-sm" onClick={() => setConfirmId(null)}>
                           <X size={13} /> Cancel
                         </button>
                       </>
                     ) : (
                       <button
-                        className="orb-btn orb-btn-ghost orb-btn-sm"
+                        className="orb-btn orb-btn-ghost-dark orb-btn-sm"
                         disabled={isLastAdmin}
                         title={isLastAdmin ? "At least one active admin is required" : ""}
                         onClick={() => setConfirmId(e.id)}
@@ -2697,7 +2697,7 @@ function EmployeesTab({ employees, onAdd, onSetPin, onSetUsername, onToggleActiv
                         <button className="orb-btn orb-btn-primary orb-btn-sm" disabled={!/^\d{4}$/.test(pinDraft) || pinMsg === "Saving…"} onClick={() => savePinEdit(e)}>
                           <Check size={13} /> Save PIN
                         </button>
-                        <button className="orb-btn orb-btn-ghost orb-btn-sm" onClick={() => { setPinEditId(null); setPinMsg(""); }}>
+                        <button className="orb-btn orb-btn-ghost-dark orb-btn-sm" onClick={() => { setPinEditId(null); setPinMsg(""); }}>
                           <X size={13} /> Cancel
                         </button>
                       </div>
@@ -2721,7 +2721,7 @@ function EmployeesTab({ employees, onAdd, onSetPin, onSetUsername, onToggleActiv
                         <button className="orb-btn orb-btn-primary orb-btn-sm" disabled={!usernameDraft.trim() || usernameMsg === "Saving…"} onClick={() => saveUsernameEdit(e)}>
                           <Check size={13} /> Save username
                         </button>
-                        <button className="orb-btn orb-btn-ghost orb-btn-sm" onClick={() => { setUsernameEditId(null); setUsernameMsg(""); }}>
+                        <button className="orb-btn orb-btn-ghost-dark orb-btn-sm" onClick={() => { setUsernameEditId(null); setUsernameMsg(""); }}>
                           <X size={13} /> Cancel
                         </button>
                       </div>
@@ -2745,7 +2745,7 @@ function EmployeesTab({ employees, onAdd, onSetPin, onSetUsername, onToggleActiv
                         >
                           <Trash2 size={13} /> Delete permanently
                         </button>
-                        <button className="orb-btn orb-btn-ghost orb-btn-sm" onClick={() => { setDeleteId(null); setDeleteTyped(""); }}>
+                        <button className="orb-btn orb-btn-ghost-dark orb-btn-sm" onClick={() => { setDeleteId(null); setDeleteTyped(""); }}>
                           <X size={13} /> Cancel
                         </button>
                       </div>
@@ -5252,5 +5252,31 @@ html, body { overflow-x: hidden; }
   .orb-roster-row { flex-wrap: wrap; }
   .orb-roster-earnings { margin-left: 34px; }
   .orb-profile-form-grid { grid-template-columns: 1fr; }
+
+  /* [ADDED] The Employees table has 5 columns plus a 3-4-button actions
+     cell — on a phone width that's wider than the screen no matter what,
+     so it was rendered as a normal table that just scrolled sideways.
+     That left "Set username" and "Deactivate" sitting off-screen to the
+     right with nothing on screen hinting they existed. Below 720px this
+     drops the row/column table layout entirely and stacks each employee
+     as its own card instead: every field and every button is visible top
+     to bottom, full width, no horizontal scrolling required to find them. */
+  .orb-emp-table thead { display: none; }
+  .orb-emp-table, .orb-emp-table tbody, .orb-emp-table tr, .orb-emp-table td { display: block; width: 100%; }
+  .orb-emp-table { border: none; background: transparent; }
+  .orb-emp-table tr { background: var(--surface-translucent); border: 1px solid var(--line); border-radius: 6px; margin-bottom: 10px; padding: 10px 12px; }
+  .orb-emp-table tr:last-child { margin-bottom: 0; }
+  .orb-emp-table td { border-top: none; padding: 6px 0; }
+  .orb-emp-table td[data-label]::before { content: attr(data-label); display: block; font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: var(--ink-soft); margin-bottom: 3px; }
+  /* [FIXED] The .orb-emp-table td display:block rule above (needed so each
+     field stacks) was also overriding .orb-row-actions's own display:flex
+     — same specificity as a bare class, but this selector has an extra
+     tag, so it won by default and the actions cell fell back to normal
+     inline block flow. That's why the buttons weren't wrapping and ran
+     off the edge of the card instead. Restating flex + wrap here, at
+     equal-or-higher specificity, puts it back. */
+  .orb-emp-table td.orb-row-actions { display: flex; flex-wrap: wrap; width: 100%; padding-top: 10px; margin-top: 4px; border-top: 1px dashed var(--line); }
+  .orb-emp-table tr.orb-edit-row { background: var(--paper-2); }
+  .orb-emp-table tr.orb-edit-row td { padding: 4px 0; }
 }
 `;
