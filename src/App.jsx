@@ -2490,32 +2490,82 @@ function OverviewTab({ employees, timeLogs, surveys, balanceSubmissions, account
 
 /* ---------------------------------- Admin: Employees ---------------------------------- */
 
-function EmployeesTab({ employees, onAdd, onSetPin, onToggleActive, onDelete, onChangeRole }) {
+function EmployeesTab({ employees, onAdd, onSetPin, onSetUsername, onToggleActive, onDelete, onChangeRole }) {
   const [name, setName] = useState("");
   const [role, setRole] = useState("tasker");
   const [username, setUsername] = useState("");
   const [pin, setPin] = useState(genPin());
   const [addMsg, setAddMsg] = useState("");
+  const [addWarn, setAddWarn] = useState(false);
   const [confirmId, setConfirmId] = useState(null);
   const [pinEditId, setPinEditId] = useState(null);
   const [pinDraft, setPinDraft] = useState("");
   const [pinMsg, setPinMsg] = useState("");
   const [deleteId, setDeleteId] = useState(null);
   const [deleteTyped, setDeleteTyped] = useState("");
+  // [ADDED] Lets an admin fix a username that failed to save (see
+  // submitAdd below) or reassign one later, without needing SQL.
+  const [usernameEditId, setUsernameEditId] = useState(null);
+  const [usernameDraft, setUsernameDraft] = useState("");
+  const [usernameMsg, setUsernameMsg] = useState("");
 
   // [ADDED] Usernames are unique — only offer ones nobody has yet.
   const usedUsernames = new Set(employees.map((e) => (e.username || "").toLowerCase()));
   const availableUsernames = MARVEL_USERNAMES.filter((n) => !usedUsernames.has(n.toLowerCase()));
 
-  function submitAdd() {
+  // [CHANGED] Was firing onAdd() and immediately showing a success message
+  // without waiting for it or checking what happened — so if the RPC
+  // created the employee but the follow-up write that saves their
+  // username failed (already taken, a dropped connection, an RLS policy
+  // blocking the column, …), the admin still saw "Added X, give them
+  // their username" even though that username was never actually saved,
+  // and the employee couldn't sign in. Now it awaits the result and shows
+  // a real error — with a way to fix it right there — instead of a false
+  // positive.
+  async function submitAdd() {
     if (!name.trim() || !username || !/^\d{4}$/.test(pin)) return;
-    onAdd(name.trim(), role, pin, username);
-    setAddMsg(`Added ${name.trim()}. Give them their username (${username}) and PIN separately.`);
+    setAddMsg("Adding…");
+    setAddWarn(false);
+    const result = await onAdd(name.trim(), role, pin, username);
+    if (!result) {
+      setAddMsg("");
+      return; // onAdd already alerted with the specific error
+    }
+    if (result.usernameSaved === false) {
+      setAddWarn(true);
+      setAddMsg(`Added ${name.trim()}, but the username "${username}" could NOT be saved (it may already be taken, or there was a database error) — they won't be able to sign in yet. Use "Set username" below to try again.`);
+    } else {
+      setAddMsg(`Added ${name.trim()}. Give them their username (${username}) and PIN separately.`);
+      setTimeout(() => setAddMsg(""), 5000);
+    }
     setName("");
     setRole("tasker");
     setUsername("");
     setPin(genPin());
-    setTimeout(() => setAddMsg(""), 4000);
+  }
+
+  function startUsernameEdit(emp) {
+    setUsernameEditId(emp.id);
+    setUsernameDraft(emp.username || "");
+    setUsernameMsg("");
+  }
+
+  async function saveUsernameEdit(emp) {
+    if (!usernameDraft.trim()) {
+      setUsernameMsg("Pick a username.");
+      return;
+    }
+    setUsernameMsg("Saving…");
+    const ok = await onSetUsername(emp.id, usernameDraft.trim());
+    if (ok) {
+      setUsernameMsg("Username saved.");
+      setTimeout(() => {
+        setUsernameEditId(null);
+        setUsernameMsg("");
+      }, 900);
+    } else {
+      setUsernameMsg("Could not save — it may already be taken by another employee.");
+    }
   }
 
   function startPinEdit(emp) {
@@ -2567,7 +2617,7 @@ function EmployeesTab({ employees, onAdd, onSetPin, onToggleActive, onDelete, on
       {availableUsernames.length === 0 && (
         <div className="orb-banner orb-banner-warn" style={{ marginTop: 10 }}>Every username in the list is taken. Add more names to MARVEL_USERNAMES in the code to free up new ones.</div>
       )}
-      {addMsg && <div className="orb-banner orb-banner-info" style={{ marginTop: 10 }}>{addMsg}</div>}
+      {addMsg && <div className={`orb-banner ${addWarn ? "orb-banner-warn" : "orb-banner-info"}`} style={{ marginTop: 10 }}>{addMsg}</div>}
 
       <div className="orb-subhead">Existing employees</div>
       <div className="orb-hint">Use the controls below to manage an existing employee. <strong>Change PIN</strong> changes their sign-in PIN without displaying or storing the PIN in the employee table.</div>
@@ -2604,6 +2654,9 @@ function EmployeesTab({ employees, onAdd, onSetPin, onToggleActive, onDelete, on
                   <td className="orb-row-actions">
                     <button className="orb-btn orb-btn-primary orb-btn-sm" onClick={() => startPinEdit(e)}>
                       <KeyRound size={13} /> Change PIN
+                    </button>
+                    <button className="orb-btn orb-btn-ghost orb-btn-sm" onClick={() => startUsernameEdit(e)}>
+                      <UserRound size={13} /> {e.username ? "Change" : "Set"} username
                     </button>
                     {confirmId === e.id ? (
                       <>
@@ -2649,6 +2702,30 @@ function EmployeesTab({ employees, onAdd, onSetPin, onToggleActive, onDelete, on
                         </button>
                       </div>
                       {pinMsg && <div className="orb-hint">{pinMsg}</div>}
+                    </td>
+                  </tr>
+                )}
+                {usernameEditId === e.id && (
+                  <tr className="orb-edit-row">
+                    <td colSpan={5}>
+                      <div className="orb-pin-edit-row">
+                        <strong>{e.username ? "Change" : "Set"} username for {e.name}</strong>
+                        <select className="orb-input" style={{ maxWidth: 220 }} value={usernameDraft} onChange={(ev) => setUsernameDraft(ev.target.value)} autoFocus>
+                          <option value="">Choose username…</option>
+                          {/* The employee's own current username stays selectable even
+                              though it's "taken" (by them), plus every other unused name. */}
+                          {[...new Set([e.username, ...availableUsernames].filter(Boolean))].map((n) => (
+                            <option key={n} value={n}>{n}</option>
+                          ))}
+                        </select>
+                        <button className="orb-btn orb-btn-primary orb-btn-sm" disabled={!usernameDraft.trim() || usernameMsg === "Saving…"} onClick={() => saveUsernameEdit(e)}>
+                          <Check size={13} /> Save username
+                        </button>
+                        <button className="orb-btn orb-btn-ghost orb-btn-sm" onClick={() => { setUsernameEditId(null); setUsernameMsg(""); }}>
+                          <X size={13} /> Cancel
+                        </button>
+                      </div>
+                      {usernameMsg && <div className="orb-hint">{usernameMsg}</div>}
                     </td>
                   </tr>
                 )}
@@ -3638,6 +3715,7 @@ function AdminView({ user, employees, timeLogs, surveys, shifts, taskLogs, accou
             employees={employees}
             onAdd={actions.addEmployee}
             onSetPin={actions.setPin}
+            onSetUsername={actions.setEmployeeUsername}
             onToggleActive={actions.toggleActive}
             onDelete={actions.deleteEmployee}
             onChangeRole={actions.changeRole}
@@ -4063,11 +4141,43 @@ export default function App() {
       return null;
     }
 
-    const newEmp = { id, name: name.trim(), role, active: true, username };
-    await persist(sbUpsert("employees", [employeeToRow(newEmp)]));
+    // [CHANGED] This write used to be fire-and-forget — its success/failure
+    // was never checked, so a failure here (the username already taken by
+    // someone else, a dropped connection, …) left a real employee row in
+    // the database with no username, while the admin's screen still showed
+    // "Added X, give them their username" as if it had worked. The
+    // employee then couldn't sign in, with nothing in the UI explaining
+    // why. Now the local record only claims the username that was
+    // actually confirmed saved, and the caller (EmployeesTab) is told
+    // whether it worked so it can show a real error instead of a false
+    // positive.
+    const ok = await persist(sbUpsert("employees", [employeeToRow({ id, name: name.trim(), role, active: true, username })]));
+    const newEmp = { id, name: name.trim(), role, active: true, username: ok ? username : "" };
     setEmployees((prev) => sortEmployees([...prev, newEmp]));
-    return newEmp;
+    return { emp: newEmp, usernameSaved: ok };
   }, [persist]);
+
+  // [ADDED] Lets an admin (re)assign an employee's username after the
+  // fact — either to fix one that failed to save when the employee was
+  // first created, or to change it later. Same direct-row-upsert pattern
+  // as the My Profile fields: username isn't part of the PIN/RPC flow.
+  const setEmployeeUsername = useCallback(async (id, newUsername) => {
+    const trimmed = (newUsername || "").trim();
+    if (!trimmed) {
+      alert("Username can't be empty.");
+      return false;
+    }
+    const target = employees.find((e) => e.id === id);
+    if (!target) return false;
+    const updated = { ...target, username: trimmed };
+    const ok = await persist(sbUpsert("employees", [employeeToRow(updated)]));
+    if (ok) {
+      setEmployees((prev) => prev.map((e) => (e.id === id ? updated : e)));
+    } else {
+      alert("Unable to save that username — it may already be taken by another employee, or there was a database error.");
+    }
+    return ok;
+  }, [employees, persist]);
 
   // [CHANGED] Existing-user PIN changes update pin_hash through the admin RPC.
   // No plaintext PIN is written to the employees table.
@@ -4431,7 +4541,7 @@ export default function App() {
               onSaveProfile={(payload) => updateProfile(currentUser.id, payload)}
               onOpenChangePin={() => setShowChangePin(true)}
               actions={{
-                addEmployee, setPin, toggleActive, changeRole, deleteEmployee, editSession, deleteSession, updateBreakMinutes, updateKesRate,
+                addEmployee, setPin, setEmployeeUsername, toggleActive, changeRole, deleteEmployee, editSession, deleteSession, updateBreakMinutes, updateKesRate,
                 clockIn, clockOut, startBreak, endBreak, submitBalance,
                 addShift, deleteShift, editShift, addEarning, deleteEarning, addAccount, renameAccount, deleteAccount, reorderAccount, setAccountGroup,
               }}
@@ -4567,8 +4677,8 @@ html, body { overflow-x: hidden; }
      covers the small transform "lift" (kept a touch quicker than the color
      fade so a hover doesn't feel laggy). Change these two values to speed
      up or slow down every clickable element in the app at once. */
-  --hover-speed: .55s;
-  --hover-speed-fast: .85s;
+  --hover-speed: .3s;
+  --hover-speed-fast: .25s;
   font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Inter', 'Helvetica Neue', Arial, sans-serif;
   color: var(--ink);
   min-height: 100vh;
