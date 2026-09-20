@@ -4136,7 +4136,18 @@ export default function App() {
       p_pin: finalPin,
     });
 
-    if (error || data !== true) {
+    // [CHANGED] Was `error || data !== true` — callRpc only sets `error`
+    // when the HTTP call itself failed; on a 200 OK it always returns
+    // error: null, no matter what `data` actually contains. Demanding the
+    // RPC's return value be the *exact* JS boolean `true` meant that if
+    // create_employee_with_pin returns anything else on success (no body,
+    // the created row, void, …) this bailed out and showed "Unable to add
+    // employee" — even though the RPC's own INSERT had already committed
+    // server-side. That left real employee rows with no username, since
+    // the code returned before ever reaching the follow-up write below.
+    // Only `data === false` (an explicit, deliberate failure signal from
+    // the RPC) is now treated as failure alongside a real error.
+    if (error || data === false) {
       alert(error?.message || "Unable to add employee.");
       return null;
     }
