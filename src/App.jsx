@@ -658,18 +658,6 @@ function earningsForWeek(submissions, nowMs, accounts) {
   });
   return any ? total : 0;
 }
-// [ADDED] All-time gross earnings for the leaderboard ticker — every day's
-// bucket from the same delta-per-account-chain engine that already powers
-// "Today"/"This week", just not bounded to one period. This is deliberately
-// the raw amount a tasker brought in, not cutAmountFor(amount) (their
-// payout rate, which varies by tier) — the ranking is by total money made,
-// not by what they personally took home from it.
-function earningsAllTime(submissions, accounts) {
-  const map = earningsByDate(submissions, accounts);
-  let total = 0;
-  map.forEach((amt) => { total += amt; });
-  return total;
-}
 function fmtMoney(n) {
   const sign = n < 0 ? "-" : "";
   return `${sign}$${Math.abs(n).toFixed(2)}`;
@@ -1165,19 +1153,22 @@ function Header({ user, onSignOut, onOpenProfile, dbOk, onRetryDb, checkingDb })
 
 // [ADDED] Scrolling leaderboard, sitting directly under the header — a
 // continuous marquee like a news chyron or a bank's forex board. Taskers
-// are ranked by total gross earnings (earningsAllTime — see its comment),
-// NOT by their personal cut, and shown by username so it reads as a
-// public leaderboard rather than exposing legal names. Visible to both
-// admins and taskers since it's meant as team-wide motivation, not an
-// admin-only report.
+// are ranked by gross earnings THIS WEEK (earningsForWeek — the exact same
+// function and week boundary already used for "This week" everywhere else
+// in the app, so the ticker resets in lockstep with those stats, not on
+// its own schedule), NOT by their personal cut, and shown by username so
+// it reads as a public leaderboard rather than exposing legal names.
+// Visible to both admins and taskers since it's meant as team-wide
+// motivation, not an admin-only report.
 function RankTicker({ employees, balanceSubmissions, accounts }) {
   const ranked = useMemo(() => {
+    const now = Date.now();
     return employees
       .filter((e) => e.role === "tasker" && e.active)
       .map((e) => ({
         id: e.id,
         label: e.username || e.name,
-        total: earningsAllTime(balanceSubmissions[e.id] || [], accounts),
+        total: earningsForWeek(balanceSubmissions[e.id] || [], now, accounts),
       }))
       .sort((a, b) => b.total - a.total || a.label.localeCompare(b.label));
   }, [employees, balanceSubmissions, accounts]);
@@ -1206,7 +1197,7 @@ function RankTicker({ employees, balanceSubmissions, accounts }) {
 
   return (
     <div className="orb-ticker">
-      <div className="orb-ticker-label"><Award size={12} /> Top earners</div>
+      <div className="orb-ticker-label"><Award size={12} /> Top earners this week</div>
       <div className="orb-ticker-viewport">
         {/* The track holds the item list twice back to back; animating it
             exactly -50% of its own width loops seamlessly — by the time the
@@ -4964,6 +4955,7 @@ html, body { overflow-x: hidden; }
   .orb-ticker-track { animation: none !important; }
   .orb-ticker-viewport { overflow-x: auto; }
   .orb-ticker-set:nth-child(2) { display: none; }
+  .orb-ticker-item, .orb-ticker-rank.gold, .orb-ticker-rank.silver, .orb-ticker-rank.bronze { animation: none !important; }
 }
 
 .orb-employee-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
@@ -5024,19 +5016,39 @@ html, body { overflow-x: hidden; }
 .orb-topbar-stack { position: sticky; top: 0; z-index: 20; flex-shrink: 0; }
 
 /* ---- Rank ticker ---- */
-.orb-ticker { display: flex; align-items: stretch; background: rgba(10,17,29,0.95); backdrop-filter: blur(6px); border-bottom: 1px solid rgba(255,255,255,0.08); box-shadow: 0 4px 14px rgba(15,26,44,0.12); }
+/* [CHANGED] A small side margin instead of the header's usual edge-to-edge
+   full bleed — a couple of px of the page's own background peeking
+   through on each side reads as "a card floating just under the header"
+   rather than another full-width bar stacked on the first, which is what
+   full-bleed looked like here. Rounded only on the bottom corners since
+   the top edge sits flush against the header above it. */
+.orb-ticker { display: flex; align-items: stretch; background: rgba(10,17,29,0.95); backdrop-filter: blur(6px); margin: 0 3px; border-radius: 0 0 8px 8px; overflow: hidden; box-shadow: 0 4px 14px rgba(15,26,44,0.12); }
 .orb-ticker-label { display: flex; align-items: center; gap: 6px; padding: 7px 14px; font-size: 10.5px; font-weight: 800; letter-spacing: 0.05em; text-transform: uppercase; color: #0F1A2C; background: var(--amber-gradient); flex-shrink: 0; white-space: nowrap; }
 .orb-ticker-viewport { flex: 1; overflow: hidden; min-width: 0; }
 .orb-ticker-track { display: flex; width: max-content; animation-name: orb-ticker-scroll; animation-timing-function: linear; animation-iteration-count: infinite; }
 .orb-ticker-set { display: flex; align-items: center; flex-shrink: 0; }
-.orb-ticker-item { display: inline-flex; align-items: center; gap: 7px; padding: 7px 20px; font-size: 12.5px; font-weight: 600; color: rgba(255,255,255,0.9); white-space: nowrap; border-right: 1px solid rgba(255,255,255,0.1); }
+/* [CHANGED] Added a slow, gentle vertical bob per item (same idea as the
+   login page's "floating text," just quicker and smaller) so the bar
+   feels alive rather than a flat, mechanical readout — the horizontal
+   scroll itself stays perfectly linear (has to, for the loop to stay
+   seamless), so this is where the "fun" lives instead. Staggered via
+   nth-child so items don't all bob in unison, which read as robotic in
+   an earlier pass. */
+.orb-ticker-item { display: inline-flex; align-items: center; gap: 7px; padding: 7px 20px; font-size: 12.5px; font-weight: 600; color: rgba(255,255,255,0.9); white-space: nowrap; border-right: 1px solid rgba(255,255,255,0.1); animation: orb-ticker-bob 2.6s ease-in-out infinite; }
+.orb-ticker-item:nth-child(3n+1) { animation-delay: -0.9s; }
+.orb-ticker-item:nth-child(3n+2) { animation-delay: -1.7s; }
 .orb-ticker-rank { font-weight: 800; color: rgba(255,255,255,0.5); font-variant-numeric: tabular-nums; }
-.orb-ticker-rank.gold { color: #F5C542; }
-.orb-ticker-rank.silver { color: #D7DCE3; }
-.orb-ticker-rank.bronze { color: #D98A55; }
+/* Top 3 get a soft glowing pulse on top of the shared bob — a small,
+   celebratory flourish that draws the eye to the leaders without adding
+   any more motion complexity than that. */
+.orb-ticker-rank.gold { color: #F5C542; animation: orb-ticker-glow 2.2s ease-in-out infinite; }
+.orb-ticker-rank.silver { color: #D7DCE3; animation: orb-ticker-glow 2.2s ease-in-out infinite; animation-delay: -0.7s; }
+.orb-ticker-rank.bronze { color: #D98A55; animation: orb-ticker-glow 2.2s ease-in-out infinite; animation-delay: -1.4s; }
 .orb-ticker-name { color: #fff; font-weight: 700; }
 .orb-ticker-amt { color: var(--teal); font-variant-numeric: tabular-nums; font-weight: 700; }
 @keyframes orb-ticker-scroll { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+@keyframes orb-ticker-bob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-2px); } }
+@keyframes orb-ticker-glow { 0%, 100% { filter: drop-shadow(0 0 0 currentColor); opacity: 0.85; } 50% { filter: drop-shadow(0 0 4px currentColor); opacity: 1; } }
 /* Pausing on hover/focus is also a practical affordance, not just a nicety
    — it's the only way to read a name past a glance while the mouse is
    there; keyboard/touch users still get the full un-paused loop. */
