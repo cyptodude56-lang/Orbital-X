@@ -658,6 +658,18 @@ function earningsForWeek(submissions, nowMs, accounts) {
   });
   return any ? total : 0;
 }
+// [ADDED] All-time gross earnings for the leaderboard ticker — every day's
+// bucket from the same delta-per-account-chain engine that already powers
+// "Today"/"This week", just not bounded to one period. This is deliberately
+// the raw amount a tasker brought in, not cutAmountFor(amount) (their
+// payout rate, which varies by tier) — the ranking is by total money made,
+// not by what they personally took home from it.
+function earningsAllTime(submissions, accounts) {
+  const map = earningsByDate(submissions, accounts);
+  let total = 0;
+  map.forEach((amt) => { total += amt; });
+  return total;
+}
 function fmtMoney(n) {
   const sign = n < 0 ? "-" : "";
   return `${sign}$${Math.abs(n).toFixed(2)}`;
@@ -1146,6 +1158,66 @@ function Header({ user, onSignOut, onOpenProfile, dbOk, onRetryDb, checkingDb })
         </button>
       </div>
     </header>
+  );
+}
+
+/* ---------------------------------- Rank ticker ---------------------------------- */
+
+// [ADDED] Scrolling leaderboard, sitting directly under the header — a
+// continuous marquee like a news chyron or a bank's forex board. Taskers
+// are ranked by total gross earnings (earningsAllTime — see its comment),
+// NOT by their personal cut, and shown by username so it reads as a
+// public leaderboard rather than exposing legal names. Visible to both
+// admins and taskers since it's meant as team-wide motivation, not an
+// admin-only report.
+function RankTicker({ employees, balanceSubmissions, accounts }) {
+  const ranked = useMemo(() => {
+    return employees
+      .filter((e) => e.role === "tasker" && e.active)
+      .map((e) => ({
+        id: e.id,
+        label: e.username || e.name,
+        total: earningsAllTime(balanceSubmissions[e.id] || [], accounts),
+      }))
+      .sort((a, b) => b.total - a.total || a.label.localeCompare(b.label));
+  }, [employees, balanceSubmissions, accounts]);
+
+  if (ranked.length === 0) return null;
+
+  // Keeps the per-item scroll speed roughly constant regardless of roster
+  // size — a 3-person board and a 30-person board both drift at the same
+  // visual pace instead of one crawling and the other racing by.
+  const duration = Math.max(18, ranked.length * 4.5);
+
+  const rankMark = (i) => {
+    if (i === 0) return <Award size={13} className="orb-ticker-rank gold" />;
+    if (i === 1) return <Award size={13} className="orb-ticker-rank silver" />;
+    if (i === 2) return <Award size={13} className="orb-ticker-rank bronze" />;
+    return <span className="orb-ticker-rank">#{i + 1}</span>;
+  };
+
+  const items = ranked.map((r, i) => (
+    <span className="orb-ticker-item" key={r.id}>
+      {rankMark(i)}
+      <span className="orb-ticker-name">{r.label}</span>
+      <span className="orb-ticker-amt">{fmtMoney(r.total)}</span>
+    </span>
+  ));
+
+  return (
+    <div className="orb-ticker">
+      <div className="orb-ticker-label"><Award size={12} /> Top earners</div>
+      <div className="orb-ticker-viewport">
+        {/* The track holds the item list twice back to back; animating it
+            exactly -50% of its own width loops seamlessly — by the time the
+            first copy has scrolled fully off, the second is in the exact
+            position the first started in, so the seam is invisible. */}
+        <div className="orb-ticker-track" style={{ animationDuration: `${duration}s` }}>
+          <div className="orb-ticker-set">{items}</div>
+          <div className="orb-ticker-set" aria-hidden="true">{items}</div>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -4523,17 +4595,28 @@ export default function App() {
         />
       ) : (
         <div className="orb-shell">
-          <Header
-            user={currentUser}
-            onSignOut={() => setCurrentUserId(null)}
-            onOpenProfile={() => {
-              if (currentUser.role === "admin") setAdminTab("profile");
-              else setTaskerTab("profile");
-            }}
-            dbOk={dbOk}
-            onRetryDb={retryDbAfterLogin}
-            checkingDb={checkingDb}
-          />
+          {/* [ADDED] Header + RankTicker share one sticky wrapper instead of
+              each being independently `position: sticky`. The ticker needs
+              to sit flush against the header's bottom edge at every width,
+              but the header's own height isn't fixed (it wraps to two rows
+              on narrow screens — see the mobile header fix). Stickying the
+              pair together as one block means they always stack correctly
+              without hardcoding a height that would drift out of sync on
+              phones, the same class of bug as the earlier mobile nav fix. */}
+          <div className="orb-topbar-stack">
+            <Header
+              user={currentUser}
+              onSignOut={() => setCurrentUserId(null)}
+              onOpenProfile={() => {
+                if (currentUser.role === "admin") setAdminTab("profile");
+                else setTaskerTab("profile");
+              }}
+              dbOk={dbOk}
+              onRetryDb={retryDbAfterLogin}
+              checkingDb={checkingDb}
+            />
+            <RankTicker employees={employees} balanceSubmissions={balanceSubmissions} accounts={accounts} />
+          </div>
           {currentUser.role === "admin" ? (
             <AdminView
               user={currentUser}
@@ -4871,6 +4954,18 @@ html, body { overflow-x: hidden; }
   .orb-login-card > .orb-tagline, .orb-login-card > .orb-login-sub, .orb-login .orb-field-label, .orb-login .orb-hint, .orb-login .orb-pin-who { animation: none !important; }
 }
 
+/* [ADDED] The ticker's whole point is continuous motion, so reduced-motion
+   doesn't just slow it — it swaps to a static, non-scrolling list instead
+   (still fully readable, just no marquee). The duplicated second copy of
+   the item list is what makes the loop seamless while scrolling; with the
+   animation off it would just be dead weight sitting off to the right, so
+   it's hidden here rather than left rendered and invisible. */
+@media (prefers-reduced-motion: reduce) {
+  .orb-ticker-track { animation: none !important; }
+  .orb-ticker-viewport { overflow-x: auto; }
+  .orb-ticker-set:nth-child(2) { display: none; }
+}
+
 .orb-employee-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .orb-employee-tile { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 18px 10px; border: 1px solid var(--line); border-radius: 5px; background: var(--surface-glass); backdrop-filter: blur(3px); cursor: pointer; font-family: inherit; font-size: 14.5px; font-weight: 600; color: var(--ink); position: relative; transition: transform var(--hover-speed-fast) cubic-bezier(.22,.8,.3,1.1), box-shadow var(--hover-speed) ease, border-color var(--hover-speed) ease, background-color var(--hover-speed) ease; text-shadow: var(--text-halo); }
 .orb-employee-tile:hover { border-color: var(--line-hover); background: rgba(255,255,255,0.5); transform: translateY(-3px); }
@@ -4917,10 +5012,35 @@ html, body { overflow-x: hidden; }
    rendered outside that box and ended up hidden behind whatever came next
    in the page (still clickable, since it was still there, just invisible).
    min-height lets the sticky header actually grow to fit a wrapped row. */
-.orb-header { background: rgba(15,26,44,0.86); backdrop-filter: blur(8px); color: #fff; padding: 12px 20px; display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; min-height: 68px; box-shadow: 0 4px 20px rgba(15,26,44,0.15); flex-shrink: 0; position: sticky; top: 0; z-index: 20; }
+/* [CHANGED] position:sticky moved off .orb-header itself and onto the
+   .orb-topbar-stack wrapper (header + ticker together) — see that class
+   below and the comment at its JSX call site for why. */
+.orb-header { background: rgba(15,26,44,0.86); backdrop-filter: blur(8px); color: #fff; padding: 12px 20px; display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; min-height: 68px; box-shadow: 0 4px 20px rgba(15,26,44,0.15); flex-shrink: 0; }
 .orb-header-right { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
 .orb-header-clock { font-size: 12.5px; color: rgba(255,255,255,0.85); font-weight: 600; font-variant-numeric: tabular-nums; }
 .orb-header-user { display: flex; align-items: center; gap: 6px; font-size: 13.5px; font-weight: 600; }
+
+/* ---- Topbar stack (header + rank ticker) ---- */
+.orb-topbar-stack { position: sticky; top: 0; z-index: 20; flex-shrink: 0; }
+
+/* ---- Rank ticker ---- */
+.orb-ticker { display: flex; align-items: stretch; background: rgba(10,17,29,0.95); backdrop-filter: blur(6px); border-bottom: 1px solid rgba(255,255,255,0.08); box-shadow: 0 4px 14px rgba(15,26,44,0.12); }
+.orb-ticker-label { display: flex; align-items: center; gap: 6px; padding: 7px 14px; font-size: 10.5px; font-weight: 800; letter-spacing: 0.05em; text-transform: uppercase; color: #0F1A2C; background: var(--amber-gradient); flex-shrink: 0; white-space: nowrap; }
+.orb-ticker-viewport { flex: 1; overflow: hidden; min-width: 0; }
+.orb-ticker-track { display: flex; width: max-content; animation-name: orb-ticker-scroll; animation-timing-function: linear; animation-iteration-count: infinite; }
+.orb-ticker-set { display: flex; align-items: center; flex-shrink: 0; }
+.orb-ticker-item { display: inline-flex; align-items: center; gap: 7px; padding: 7px 20px; font-size: 12.5px; font-weight: 600; color: rgba(255,255,255,0.9); white-space: nowrap; border-right: 1px solid rgba(255,255,255,0.1); }
+.orb-ticker-rank { font-weight: 800; color: rgba(255,255,255,0.5); font-variant-numeric: tabular-nums; }
+.orb-ticker-rank.gold { color: #F5C542; }
+.orb-ticker-rank.silver { color: #D7DCE3; }
+.orb-ticker-rank.bronze { color: #D98A55; }
+.orb-ticker-name { color: #fff; font-weight: 700; }
+.orb-ticker-amt { color: var(--teal); font-variant-numeric: tabular-nums; font-weight: 700; }
+@keyframes orb-ticker-scroll { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+/* Pausing on hover/focus is also a practical affordance, not just a nicety
+   — it's the only way to read a name past a glance while the mouse is
+   there; keyboard/touch users still get the full un-paused loop. */
+.orb-ticker:hover .orb-ticker-track, .orb-ticker:focus-within .orb-ticker-track { animation-play-state: paused; }
 
 .orb-body { flex: 1; padding: 20px; max-width: 1040px; width: 100%; margin: 0 auto; position: relative; z-index: 1; }
 .orb-embedded-tasker { border: 1px solid var(--line); border-radius: 5px; overflow: hidden; background: transparent; }
