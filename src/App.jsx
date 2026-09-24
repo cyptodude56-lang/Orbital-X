@@ -1197,7 +1197,7 @@ function RankTicker({ employees, balanceSubmissions, accounts }) {
 
   return (
     <div className="orb-ticker">
-      <div className="orb-ticker-label"><Award size={12} /> Top earners this week</div>
+      <div className="orb-ticker-label"><Award size={12} /> Top earners</div>
       <div className="orb-ticker-viewport">
         {/* The track holds the item list twice back to back; animating it
             exactly -50% of its own width loops seamlessly — by the time the
@@ -5410,5 +5410,14 @@ html, body { overflow-x: hidden; }
   .orb-emp-table td.orb-row-actions { display: flex; flex-wrap: wrap; width: 100%; padding-top: 10px; margin-top: 4px; border-top: 1px dashed var(--line); }
   .orb-emp-table tr.orb-edit-row { background: var(--paper-2); }
   .orb-emp-table tr.orb-edit-row td { padding: 4px 0; }
+
+  /* [ADDED] "Top earners" at its desktop padding/font-size was wide enough
+     on a phone to eat a big chunk of the ticker's width on its own,
+     crowding out the scrolling content it's labeling — shortening the
+     text alone (was "Top earners this week") wasn't enough on its own.
+     Shrinking the label specifically on phones gives the actual ticker
+     room to breathe without touching how it looks on desktop. */
+  .orb-ticker-label { padding: 6px 8px; font-size: 9px; gap: 4px; letter-spacing: 0.03em; }
+  .orb-ticker-item { padding: 6px 14px; gap: 6px; font-size: 12px; }
 }
 `;
