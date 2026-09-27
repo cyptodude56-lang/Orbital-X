@@ -3866,36 +3866,50 @@ export default function App() {
     const healthy = await checkDbHealth();
     setDbOk(healthy);
 
+    // [CHANGED] These 9 table reads used to run one at a time (await,
+    // await, await, …) even though none of them depends on any other's
+    // result — they're independent tables. On a real network each
+    // round-trip's latency just stacked on top of the last, so the
+    // "Loading Orbital X…" screen stayed up for roughly the SUM of 9
+    // requests. Firing them together and waiting on the whole batch drops
+    // that to roughly the time of the single slowest one instead — the
+    // single biggest lever on how long the app takes to become usable.
+    const [empRowsRaw, timeLogRows, surveyRows, shiftRows, taskLogRows, balanceRows, settingsRowsRaw, accountRowsRaw, earningRowsRaw] = healthy
+      ? await Promise.all([
+          // Also selects the My Profile columns added alongside that
+          // feature (see the SQL migration) — sbSelect returns raw rows
+          // with Postgres' snake_case column names, mapped to the app's
+          // camelCase via employeeFromRow just below.
+          sbSelect("employees", "?select=id,name,role,active,username,email,phone,location,bio,avatar_url,notify_email,notify_push,notify_weekly_summary,public_profile,verified"),
+          sbSelect("time_logs", "?select=*"),
+          sbSelect("survey_entries", "?select=*"),
+          sbSelect("shifts", "?select=*"),
+          sbSelect("task_logs", "?select=*"),
+          sbSelect("balance_submissions", "?select=*"),
+          sbSelect("settings", "?select=*&id=eq.global"),
+          sbSelect("accounts", "?select=*"),
+          sbSelect("account_earnings", "?select=*"),
+        ])
+      : [null, [], [], [], [], [], [], [], []];
+
     let empList;
     if (healthy) {
-      // [CHANGED] Also select the My Profile columns added alongside this
-      // feature (see the SQL migration) — sbSelect returns raw rows with
-      // Postgres' snake_case column names, mapped to the app's camelCase
-      // via employeeFromRow just below.
-      let empRows = await sbSelect("employees", "?select=id,name,role,active,username,email,phone,location,bio,avatar_url,notify_email,notify_push,notify_weekly_summary,public_profile,verified");
-      if (empRows && empRows.length === 0) {
-        // [CHANGED] Do not seed plaintext PINs into the employees table.
-        // The database should already contain the initial users and hashed PINs.
-        empRows = SEED_EMPLOYEES;
-      }
-      empList = sortEmployees((empRows || SEED_EMPLOYEES).map(employeeFromRow));
+      // [CHANGED] Do not seed plaintext PINs into the employees table.
+      // The database should already contain the initial users and hashed PINs.
+      const empRows = (empRowsRaw && empRowsRaw.length > 0) ? empRowsRaw : SEED_EMPLOYEES;
+      empList = sortEmployees(empRows.map(employeeFromRow));
     } else {
       empList = sortEmployees(SEED_EMPLOYEES);
     }
 
-    const timeLogRows = healthy ? await sbSelect("time_logs", "?select=*") : [];
-    const surveyRows = healthy ? await sbSelect("survey_entries", "?select=*") : [];
-    const shiftRows = healthy ? await sbSelect("shifts", "?select=*") : [];
-    const taskLogRows = healthy ? await sbSelect("task_logs", "?select=*") : [];
-    const balanceRows = healthy ? await sbSelect("balance_submissions", "?select=*") : [];
-    let settingsRows = healthy ? await sbSelect("settings", "?select=*&id=eq.global") : [];
+    let settingsRows = settingsRowsRaw;
     if (healthy && (!settingsRows || settingsRows.length === 0)) {
       await sbUpsert("settings", [{ id: "global", break_minutes: DEFAULT_BREAK_MINUTES, kes_rate: DEFAULT_KES_RATE }]);
       settingsRows = [{ id: "global", break_minutes: DEFAULT_BREAK_MINUTES, kes_rate: DEFAULT_KES_RATE }];
     }
 
-    let accountRows = healthy ? await sbSelect("accounts", "?select=*") : [];
-    let earningRows = healthy ? await sbSelect("account_earnings", "?select=*") : [];
+    let accountRows = accountRowsRaw;
+    let earningRows = earningRowsRaw;
     if (healthy && accountRows && accountRows.length === 0) {
       const seedAccounts = ACCOUNT_EARNING_NAMES.map((name, i) => ({ id: uid(), name, sortIndex: i }));
       const seedEarnings = IMPORTED_ACCOUNT_EARNINGS.map((e) => ({ id: uid(), ...e }));
