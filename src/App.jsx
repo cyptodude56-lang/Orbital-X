@@ -328,6 +328,14 @@ function taskLogFromRow(row) {
 function emptyTaskGrid() {
   return Array.from({ length: 10 }, () => Array(10).fill(false));
 }
+// [ADDED] One row per (tasker, week) an admin has marked as paid — see
+// TASK_PAY_CUTOVER / unpaidTaskWeeks near TaskLogTab for how these are used.
+function taskPayoutToRow(p) {
+  return { id: p.id, employee_id: p.employeeId, week_start: p.weekStart, marked_count: p.markedCount || 0, paid_at: p.paidAt, paid_by: p.paidBy || null };
+}
+function taskPayoutFromRow(row) {
+  return { id: row.id, employeeId: row.employee_id, weekStart: row.week_start, markedCount: row.marked_count || 0, paidAt: row.paid_at, paidBy: row.paid_by || "" };
+}
 
 /* ---------------------------------- Helpers ---------------------------------- */
 
@@ -2310,13 +2318,83 @@ function weekDatesForOffset(now, offset) {
   });
 }
 
-function TaskLogTab({ taskLogs, onToggleCell, onDuplicateWeeks, readOnly }) {
+// [ADDED] Task pay cycle. Tasks done in a week are paid the FOLLOWING
+// Friday, so the Task log no longer drops last week the moment Monday
+// arrives. A finished week that has at least one marked slot stays
+// visible (labelled "Unpaid") until an admin clicks Paid for that tasker
+// in Admin → Tasker view. Weeks where nothing was marked never need
+// paying, so they're skipped automatically and never hold the view back —
+// no one has to click Paid just to clear an empty week.
+//
+// Weeks that started before this date were already settled outside the
+// app before Paid existed, so they're never treated as unpaid (otherwise
+// every old week with marks would suddenly show up as owed).
+const TASK_PAY_CUTOVER = "2026-10-05";
+
+function weekStartKeyOf(dateKey) {
+  return localDateKey(startOfWeek(parseDateKeyLocal(dateKey)).toISOString());
+}
+function currentWeekStartKey(nowMs) {
+  return localDateKey(startOfWeek(nowMs).toISOString());
+}
+function markedCountOfGrid(grid) {
+  return (grid || []).reduce((sum, row) => sum + (row || []).filter(Boolean).length, 0);
+}
+function markedCountForWeek(taskLogs, weekKey) {
+  return (taskLogs || []).reduce((sum, t) => (weekStartKeyOf(t.date) === weekKey ? sum + markedCountOfGrid(t.grid) : sum), 0);
+}
+// Finished weeks (before the current one) with marked slots that haven't
+// been paid yet, oldest first.
+function unpaidTaskWeeks(taskLogs, payouts, nowMs) {
+  const thisWeek = currentWeekStartKey(nowMs);
+  const paid = new Set((payouts || []).map((p) => p.weekStart));
+  const counts = new Map();
+  (taskLogs || []).forEach((t) => {
+    const wk = weekStartKeyOf(t.date);
+    if (wk >= thisWeek || wk < TASK_PAY_CUTOVER || paid.has(wk)) return;
+    counts.set(wk, (counts.get(wk) || 0) + markedCountOfGrid(t.grid));
+  });
+  return [...counts.entries()]
+    .filter(([, n]) => n > 0)
+    .sort((a, b) => a[0].localeCompare(b[0]))
+    .map(([weekStart, markedCount]) => ({ weekStart, markedCount }));
+}
+// Whole weeks between a week-start key and the current week (-1 = last week).
+function weekOffsetOf(weekKey, nowMs) {
+  const days = (parseDateKeyLocal(weekKey) - parseDateKeyLocal(currentWeekStartKey(nowMs))) / 86400000;
+  return Math.round(days / 7);
+}
+function fmtWeekRange(weekKey) {
+  const start = parseDateKeyLocal(weekKey);
+  const end = new Date(start);
+  end.setDate(end.getDate() + 6);
+  const s = start.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  const e = end.toLocaleDateString("en-US", start.getMonth() === end.getMonth() ? { day: "numeric" } : { month: "short", day: "numeric" });
+  return `${s} – ${e}`;
+}
+function relativeWeekName(offset) {
+  if (offset === 0) return "This week";
+  if (offset === -1) return "Last week";
+  if (offset === 1) return "Next week";
+  return offset < 0 ? `${-offset} weeks ago` : `In ${offset} weeks`;
+}
+
+function TaskLogTab({ taskLogs, taskPayouts, onToggleCell, onDuplicateWeeks, readOnly }) {
   const [weekOffset, setWeekOffset] = useState(0);
   const dates = useMemo(() => weekDatesForOffset(Date.now(), weekOffset), [weekOffset]);
   const todayKey = localDateKey(new Date().toISOString());
   const [selectedDate, setSelectedDate] = useState(dates[0]);
   const [copyCount, setCopyCount] = useState(4);
   const [confirmCopy, setConfirmCopy] = useState(false);
+
+  // [ADDED] Past weeks are reachable only while they're unpaid; this week
+  // and future weeks (for planning / "Copy this week forward") as before.
+  const now = Date.now();
+  const unpaid = useMemo(() => unpaidTaskWeeks(taskLogs, taskPayouts, Date.now()), [taskLogs, taskPayouts]);
+  const unpaidOffsets = unpaid.map((w) => weekOffsetOf(w.weekStart, now));
+  const prevOffset = weekOffset > 0 ? weekOffset - 1 : [...unpaidOffsets].reverse().find((o) => o < weekOffset);
+  const nextOffset = weekOffset >= 0 ? weekOffset + 1 : (unpaidOffsets.find((o) => o > weekOffset) ?? 0);
+  const thisWeekKey = currentWeekStartKey(now);
 
   useEffect(() => {
     // Keep the selected day valid (same weekday index) when the week changes.
@@ -2325,9 +2403,18 @@ function TaskLogTab({ taskLogs, onToggleCell, onDuplicateWeeks, readOnly }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [weekOffset]);
 
+  // If the past week being viewed gets marked as paid, it's no longer
+  // reachable — fall back to this week instead of showing a stale grid.
+  useEffect(() => {
+    if (weekOffset < 0 && !unpaidOffsets.includes(weekOffset)) setWeekOffset(0);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [unpaid]);
+
   const grid = (taskLogs.find((t) => t.date === selectedDate) || {}).grid || emptyTaskGrid();
   const filledCount = grid.reduce((sum, row) => sum + row.filter(Boolean).length, 0);
-  const weekLabelText = `Week ${weekOffset + 1}${weekOffset === 0 ? " (this week)" : ""}`;
+  const weekLabelText = `${relativeWeekName(weekOffset)} · ${fmtWeekRange(dates[0])}`;
+  const firstTargetKey = weekDatesForOffset(now, weekOffset + 1)[0];
+  const lastTargetKey = weekDatesForOffset(now, weekOffset + copyCount)[0];
 
   function submitDuplicate() {
     onDuplicateWeeks(weekOffset, copyCount);
@@ -2340,12 +2427,44 @@ function TaskLogTab({ taskLogs, onToggleCell, onDuplicateWeeks, readOnly }) {
         Mark which task/account you worked on during each hour, {WEEKDAY_LABELS[0]}–{WEEKDAY_LABELS[6]}.
       </div>
 
+      {unpaid.length > 0 && (
+        <>
+          <div className="orb-paystrip">
+            {unpaid.map((w) => {
+              const off = weekOffsetOf(w.weekStart, now);
+              return (
+                <button key={w.weekStart} className={`orb-paychip ${weekOffset === off ? "active" : ""}`} onClick={() => setWeekOffset(off)}>
+                  <span className="orb-paychip-top">
+                    <span className="orb-paychip-name">{relativeWeekName(off)}</span>
+                    <span className="orb-badge orb-badge-unpaid">Unpaid</span>
+                  </span>
+                  <span className="orb-paychip-meta">{fmtWeekRange(w.weekStart)} · {w.markedCount} marked</span>
+                </button>
+              );
+            })}
+            <button className={`orb-paychip ${weekOffset === 0 ? "active" : ""}`} onClick={() => setWeekOffset(0)}>
+              <span className="orb-paychip-top">
+                <span className="orb-paychip-name">This week</span>
+                <span className="orb-badge orb-badge-live">In progress</span>
+              </span>
+              <span className="orb-paychip-meta">{fmtWeekRange(thisWeekKey)} · {markedCountForWeek(taskLogs, thisWeekKey)} marked</span>
+            </button>
+          </div>
+          <div className="orb-hint" style={{ marginTop: 0 }}>
+            Weeks marked Unpaid stay here until {readOnly ? "you mark them" : "your admin marks them"} as paid.
+          </div>
+        </>
+      )}
+
       <div className="orb-week-nav">
-        <button className="orb-icon-btn" disabled={weekOffset === 0} onClick={() => setWeekOffset((w) => Math.max(0, w - 1))} aria-label="Previous week">
+        <button className="orb-icon-btn" disabled={prevOffset === undefined} onClick={() => prevOffset !== undefined && setWeekOffset(prevOffset)} aria-label="Previous week">
           <ChevronLeft size={16} />
         </button>
-        <span className="orb-week-label">{weekLabelText}</span>
-        <button className="orb-icon-btn" onClick={() => setWeekOffset((w) => w + 1)} aria-label="Next week">
+        <span className="orb-week-label">
+          {weekLabelText}
+          {weekOffset < 0 && <span className="orb-badge orb-badge-unpaid" style={{ marginLeft: 8 }}>Unpaid</span>}
+        </span>
+        <button className="orb-icon-btn" onClick={() => setWeekOffset(nextOffset)} aria-label="Next week">
           <ChevronRight size={16} />
         </button>
       </div>
@@ -2391,7 +2510,7 @@ function TaskLogTab({ taskLogs, onToggleCell, onDuplicateWeeks, readOnly }) {
           <div className="orb-subhead" style={{ marginTop: 0 }}>Copy this week forward</div>
           {!confirmCopy ? (
             <div className="orb-duplicate-row">
-              <span>Duplicate {weekLabelText}'s grid to the next</span>
+              <span>Copy this grid ({fmtWeekRange(dates[0])}) to the next</span>
               <input
                 className="orb-input orb-input-narrow"
                 type="number" min="1" max="12"
@@ -2403,7 +2522,7 @@ function TaskLogTab({ taskLogs, onToggleCell, onDuplicateWeeks, readOnly }) {
             </div>
           ) : (
             <div className="orb-duplicate-row">
-              <span className="orb-text-rose">This replaces anything already entered in week{copyCount > 1 ? "s" : ""} {weekOffset + 2}{copyCount > 1 ? `–${weekOffset + 1 + copyCount}` : ""}. Continue?</span>
+              <span className="orb-text-rose">This replaces anything already entered for {fmtWeekRange(firstTargetKey)}{copyCount > 1 ? ` through ${fmtWeekRange(lastTargetKey)}` : ""}. Continue?</span>
               <button className="orb-btn orb-btn-primary orb-btn-sm" onClick={submitDuplicate}>Yes, duplicate</button>
               <button className="orb-btn orb-btn-ghost-dark orb-btn-sm" onClick={() => setConfirmCopy(false)}>Cancel</button>
             </div>
@@ -2416,7 +2535,7 @@ function TaskLogTab({ taskLogs, onToggleCell, onDuplicateWeeks, readOnly }) {
 
 /* ---------------------------------- Tasker view shell ---------------------------------- */
 
-function TaskerView({ user, sessions, surveys, shifts, taskLogs, breakMinutes, balanceSubmissions, onClockIn, onClockOut, onStartBreak, onEndBreak, onLogSurvey, onDeleteSurvey, onToggleTaskCell, onSubmitBalance, onDuplicateTaskWeeks, readOnly, kesRate, accounts, activeTab, onTabChange, onSaveProfile, onOpenChangePin }) {
+function TaskerView({ user, sessions, surveys, shifts, taskLogs, taskPayouts, breakMinutes, balanceSubmissions, onClockIn, onClockOut, onStartBreak, onEndBreak, onLogSurvey, onDeleteSurvey, onToggleTaskCell, onSubmitBalance, onDuplicateTaskWeeks, readOnly, kesRate, accounts, activeTab, onTabChange, onSaveProfile, onOpenChangePin }) {
   // [CHANGED] Tab selection is now controlled by the parent (App) instead
   // of local state, so the header's "My Profile" link can jump straight
   // to the "profile" tab from outside this component.
@@ -2464,7 +2583,7 @@ function TaskerView({ user, sessions, surveys, shifts, taskLogs, breakMinutes, b
         <SurveyLogTab liveEntries={surveys} importedWeeks={importedWeeks} onLog={onLogSurvey} onDeleteEntry={onDeleteSurvey} readOnly={readOnly} />
       )}
       {tab === "tasklog" && (
-        <TaskLogTab taskLogs={taskLogs} onToggleCell={onToggleTaskCell} onDuplicateWeeks={onDuplicateTaskWeeks} readOnly={readOnly} />
+        <TaskLogTab taskLogs={taskLogs} taskPayouts={taskPayouts || []} onToggleCell={onToggleTaskCell} onDuplicateWeeks={onDuplicateTaskWeeks} readOnly={readOnly} />
       )}
       {tab === "schedule" && <ScheduleTab shifts={shifts} />}
       {tab === "history" && <MyHistoryTab sessions={sessions} />}
@@ -3646,7 +3765,7 @@ function AdminEvaluationsTab({ employees, timeLogs, surveys }) {
 
 /* ---------------------------------- Admin: Tasker detail (view-as) ---------------------------------- */
 
-function AdminTaskerViewTab({ employees, timeLogs, surveys, shifts, taskLogs, balanceSubmissions, breakMinutes, kesRate, accounts }) {
+function AdminTaskerViewTab({ employees, timeLogs, surveys, shifts, taskLogs, taskPayouts, balanceSubmissions, breakMinutes, kesRate, accounts, onMarkTasksPaid, onUndoTaskPayout }) {
   const taskers = employees.filter((e) => e.role !== "admin");
   const [empId, setEmpId] = useState(taskers[0]?.id || "");
   // [ADDED] TaskerView's tab is now controlled by its parent (see
@@ -3654,10 +3773,35 @@ function AdminTaskerViewTab({ employees, timeLogs, surveys, shifts, taskLogs, ba
   // local tab state to hand down — without it TaskerView had no active
   // tab at all and rendered blank, which is what broke this view.
   const [previewTab, setPreviewTab] = useState("clock");
+  // [ADDED] Task pay card state (confirm step + result message).
+  const [confirmingPaid, setConfirmingPaid] = useState(false);
+  const [payBusy, setPayBusy] = useState(false);
+  const [payMsg, setPayMsg] = useState("");
+  useEffect(() => { setConfirmingPaid(false); setPayMsg(""); }, [empId]);
   const emp = taskers.find((e) => e.id === empId);
   const now = Date.now();
 
   if (!emp) return <div className="orb-panel"><div className="orb-empty">Add a tasker first.</div></div>;
+
+  const empTaskLogs = taskLogs[emp.id] || [];
+  const payouts = (taskPayouts || {})[emp.id] || [];
+  const unpaid = unpaidTaskWeeks(empTaskLogs, payouts, now);
+  const payHistory = payouts.slice().sort((a, b) => b.weekStart.localeCompare(a.weekStart));
+  // Only the most recent Paid click can be undone — enough to recover from
+  // a misclick without letting older, settled weeks get reopened casually.
+  const latestPayoutId = payouts.slice().sort((a, b) => (b.paidAt || "").localeCompare(a.paidAt || "") || b.weekStart.localeCompare(a.weekStart))[0]?.id;
+
+  async function confirmPaid() {
+    setPayBusy(true);
+    const ok = await onMarkTasksPaid(emp.id, unpaid.map((w) => w.weekStart));
+    setPayBusy(false);
+    setConfirmingPaid(false);
+    setPayMsg(ok ? "Marked as paid. Those weeks are no longer shown in their Task log." : "");
+  }
+  async function undoPayout(p) {
+    const ok = await onUndoTaskPayout(emp.id, p.id);
+    setPayMsg(ok ? `${fmtWeekRange(p.weekStart)} is unpaid again and back in their Task log.` : "");
+  }
 
   const sessions = timeLogs[emp.id] || [];
   const openSession = sessions.find((s) => !s.clockOut);
@@ -3693,6 +3837,75 @@ function AdminTaskerViewTab({ employees, timeLogs, surveys, shifts, taskLogs, ba
         <StatTile label="Earned this week" value={fmtMoney(earnedWeek)} tone="amber" />
       </div>
 
+      {/* [ADDED] Task pay — tasks are paid the Friday after the week they
+          were done, so finished weeks stay in the tasker's Task log until
+          they're marked paid here (see unpaidTaskWeeks). */}
+      <div className="orb-subhead">Task pay</div>
+      <div className="orb-paycard">
+        {unpaid.length === 0 ? (
+          <div className="orb-hint" style={{ margin: 0 }}>
+            Nothing waiting to be paid. Weeks where {emp.name} didn't mark any tasks don't need a Paid click — their Task log moves on to the new week by itself.
+          </div>
+        ) : (
+          <>
+            <div className="orb-paycard-list">
+              {unpaid.map((w) => (
+                <div className="orb-paycard-row" key={w.weekStart}>
+                  <span className="orb-paycard-week">{fmtWeekRange(w.weekStart)}</span>
+                  <span className="orb-paycard-count">{w.markedCount} task slot{w.markedCount === 1 ? "" : "s"} marked</span>
+                  <span className="orb-badge orb-badge-unpaid">Unpaid</span>
+                </div>
+              ))}
+            </div>
+            {!confirmingPaid ? (
+              <div>
+                <button className="orb-btn orb-btn-primary orb-btn-sm" onClick={() => { setConfirmingPaid(true); setPayMsg(""); }}>
+                  <Check size={13} /> Paid
+                </button>
+              </div>
+            ) : (
+              <div className="orb-pin-edit-row">
+                <span>
+                  Mark {unpaid.length === 1 ? fmtWeekRange(unpaid[0].weekStart) : `these ${unpaid.length} weeks`} as paid? {unpaid.length === 1 ? "It" : "They"}'ll drop off {emp.name}'s Task log.
+                </span>
+                <button className="orb-btn orb-btn-primary orb-btn-sm" disabled={payBusy} onClick={confirmPaid}>
+                  <Check size={13} /> {payBusy ? "Saving…" : "Yes, mark paid"}
+                </button>
+                <button className="orb-btn orb-btn-ghost-dark orb-btn-sm" disabled={payBusy} onClick={() => setConfirmingPaid(false)}>
+                  <X size={13} /> Cancel
+                </button>
+              </div>
+            )}
+          </>
+        )}
+        {payMsg && <div className="orb-banner orb-banner-info" style={{ marginTop: 10 }}>{payMsg}</div>}
+
+        {payHistory.length > 0 && (
+          <>
+            <div className="orb-paycard-subhead">Paid history</div>
+            <div className="orb-table-wrap">
+              <table className="orb-table">
+                <thead><tr><th>Week</th><th>Task slots</th><th>Marked paid</th><th></th></tr></thead>
+                <tbody>
+                  {payHistory.map((p) => (
+                    <tr key={p.id}>
+                      <td>{fmtWeekRange(p.weekStart)}</td>
+                      <td className="orb-num">{p.markedCount}</td>
+                      <td>{p.paidAt ? new Date(p.paidAt).toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" }) : "—"}</td>
+                      <td>
+                        {p.id === latestPayoutId && (
+                          <button className="orb-btn orb-btn-ghost-dark orb-btn-sm" onClick={() => undoPayout(p)}>Undo</button>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
+        )}
+      </div>
+
       <div className="orb-subhead">{emp.name}'s dashboard</div>
       <div className="orb-embedded-tasker">
         <TaskerView
@@ -3700,7 +3913,8 @@ function AdminTaskerViewTab({ employees, timeLogs, surveys, shifts, taskLogs, ba
           sessions={sessions}
           surveys={entries}
           shifts={shifts[emp.id] || []}
-          taskLogs={taskLogs[emp.id] || []}
+          taskLogs={empTaskLogs}
+          taskPayouts={payouts}
           balanceSubmissions={subs}
           breakMinutes={breakMinutes}
           accounts={accounts}
@@ -3727,7 +3941,7 @@ function AdminTaskerViewTab({ employees, timeLogs, surveys, shifts, taskLogs, ba
 
 
 
-function AdminView({ user, employees, timeLogs, surveys, shifts, taskLogs, accounts, accountEarnings, balanceSubmissions, breakMinutes, kesRate, actions, activeTab, onTabChange, onSaveProfile, onOpenChangePin }) {
+function AdminView({ user, employees, timeLogs, surveys, shifts, taskLogs, taskPayouts, accounts, accountEarnings, balanceSubmissions, breakMinutes, kesRate, actions, activeTab, onTabChange, onSaveProfile, onOpenChangePin }) {
   // [CHANGED] Tab selection is now controlled by the parent (App) instead
   // of local state, so the header's "My Profile" link can jump straight
   // to the "profile" tab from outside this component.
@@ -3796,7 +4010,7 @@ function AdminView({ user, employees, timeLogs, surveys, shifts, taskLogs, accou
           <AdminAccountsTab accounts={accounts} earnings={accountEarnings} onAddEarning={actions.addEarning} onDeleteEarning={actions.deleteEarning} onAddAccount={actions.addAccount} onRenameAccount={actions.renameAccount} onDeleteAccount={actions.deleteAccount} onReorderAccount={actions.reorderAccount} onSetAccountGroup={actions.setAccountGroup} />
         )}
         {tab === "taskerview" && (
-          <AdminTaskerViewTab employees={employees} timeLogs={timeLogs} surveys={surveys} shifts={shifts} taskLogs={taskLogs} balanceSubmissions={balanceSubmissions} breakMinutes={breakMinutes} kesRate={kesRate} accounts={accounts} />
+          <AdminTaskerViewTab employees={employees} timeLogs={timeLogs} surveys={surveys} shifts={shifts} taskLogs={taskLogs} taskPayouts={taskPayouts} balanceSubmissions={balanceSubmissions} breakMinutes={breakMinutes} kesRate={kesRate} accounts={accounts} onMarkTasksPaid={actions.markTasksPaid} onUndoTaskPayout={actions.undoTaskPayout} />
         )}
         {tab === "settings" && <SettingsTab breakMinutes={breakMinutes} onSaveBreakMinutes={actions.updateBreakMinutes} kesRate={kesRate} onSaveKesRate={actions.updateKesRate} />}
         {tab === "profile" && (
@@ -3826,6 +4040,7 @@ export default function App() {
   const [surveys, setSurveys] = useState({});
   const [shifts, setShifts] = useState({});
   const [taskLogs, setTaskLogs] = useState({});
+  const [taskPayouts, setTaskPayouts] = useState({});
   const [balanceSubmissions, setBalanceSubmissions] = useState({});
   const [accounts, setAccounts] = useState([]);
   const [accountEarnings, setAccountEarnings] = useState([]);
@@ -3874,7 +4089,7 @@ export default function App() {
     // requests. Firing them together and waiting on the whole batch drops
     // that to roughly the time of the single slowest one instead — the
     // single biggest lever on how long the app takes to become usable.
-    const [empRowsRaw, timeLogRows, surveyRows, shiftRows, taskLogRows, balanceRows, settingsRowsRaw, accountRowsRaw, earningRowsRaw] = healthy
+    const [empRowsRaw, timeLogRows, surveyRows, shiftRows, taskLogRows, balanceRows, settingsRowsRaw, accountRowsRaw, earningRowsRaw, taskPayoutRows] = healthy
       ? await Promise.all([
           // Also selects the My Profile columns added alongside that
           // feature (see the SQL migration) — sbSelect returns raw rows
@@ -3889,8 +4104,12 @@ export default function App() {
           sbSelect("settings", "?select=*&id=eq.global"),
           sbSelect("accounts", "?select=*"),
           sbSelect("account_earnings", "?select=*"),
+          // [ADDED] Task pay records. If the task_payouts migration hasn't
+          // been run yet this just comes back null and is treated as "no
+          // payouts" — the app still loads normally.
+          sbSelect("task_payouts", "?select=*"),
         ])
-      : [null, [], [], [], [], [], [], [], []];
+      : [null, [], [], [], [], [], [], [], [], []];
 
     let empList;
     if (healthy) {
@@ -3950,6 +4169,13 @@ export default function App() {
       taskLogsByEmp[t.employeeId].push(t);
     });
 
+    const payoutsByEmp = {};
+    (taskPayoutRows || []).forEach((row) => {
+      const p = taskPayoutFromRow(row);
+      if (!payoutsByEmp[p.employeeId]) payoutsByEmp[p.employeeId] = [];
+      payoutsByEmp[p.employeeId].push(p);
+    });
+
     const balanceByEmp = {};
     empList.forEach((e) => { balanceByEmp[e.id] = []; });
     (balanceRows || []).forEach((row) => {
@@ -3969,6 +4195,7 @@ export default function App() {
     setSurveys(survByEmp);
     setShifts(shiftsByEmp);
     setTaskLogs(taskLogsByEmp);
+    setTaskPayouts(payoutsByEmp);
     setBalanceSubmissions(balanceByEmp);
     setAccounts((accountRows || []).map(accountFromRow));
     setAccountEarnings((earningRows || []).map(earningFromRow));
@@ -4070,13 +4297,14 @@ export default function App() {
       await sbUpsert("survey_entries", allSurveys);
       await sbUpsert("shifts", allShifts);
       await sbUpsert("task_logs", allTaskLogs);
+      await sbUpsert("task_payouts", Object.values(taskPayouts).flat().map(taskPayoutToRow));
       await sbUpsert("balance_submissions", allBalances);
       await sbUpsert("accounts", accounts.map(accountToRow));
       await sbUpsert("account_earnings", accountEarnings.map(earningToRow));
       await sbUpsert("settings", [{ id: "global", break_minutes: breakMinutes, kes_rate: kesRate }]);
     }
     setCheckingDb(false);
-  }, [employees, timeLogs, surveys, shifts, taskLogs, balanceSubmissions, accounts, accountEarnings, breakMinutes, kesRate]);
+  }, [employees, timeLogs, surveys, shifts, taskLogs, taskPayouts, balanceSubmissions, accounts, accountEarnings, breakMinutes, kesRate]);
 
   const persist = useCallback(async (promise) => {
     const ok = await promise;
@@ -4359,6 +4587,9 @@ export default function App() {
     setSurveys((prev) => { const next = { ...prev }; delete next[id]; return next; });
     setShifts((prev) => { const next = { ...prev }; delete next[id]; return next; });
     setTaskLogs((prev) => { const next = { ...prev }; delete next[id]; return next; });
+    // task_payouts rows are removed by the database itself (ON DELETE
+    // CASCADE in task_payouts_migration.sql), so only local state here.
+    setTaskPayouts((prev) => { const next = { ...prev }; delete next[id]; return next; });
     setBalanceSubmissions((prev) => { const next = { ...prev }; delete next[id]; return next; });
     if (currentUserId === id) setCurrentUserId(null);
   }, [currentUserId, employees]);
@@ -4454,6 +4685,42 @@ export default function App() {
       persist(sbUpsert("task_logs", newRows.map(taskLogToRow)));
       return { ...prev, [empId]: updatedList };
     });
+  }, [persist]);
+
+  // [ADDED] Admin → Tasker view → Paid. Records one task_payouts row per
+  // unpaid week (with a snapshot of how many slots were marked), which
+  // takes those weeks out of the tasker's Task log. Local state only
+  // changes once the database has actually confirmed the write, so a
+  // failed save never makes a week look paid when it isn't.
+  const markTasksPaid = useCallback(async (empId, weekKeys) => {
+    if (!weekKeys || weekKeys.length === 0) return false;
+    const logs = taskLogs[empId] || [];
+    const paidAt = new Date().toISOString();
+    const rows = weekKeys.map((weekStart) => ({
+      id: uid(),
+      employeeId: empId,
+      weekStart,
+      markedCount: markedCountForWeek(logs, weekStart),
+      paidAt,
+      paidBy: currentUserId,
+    }));
+    const ok = await persist(sbUpsert("task_payouts", rows.map(taskPayoutToRow)));
+    if (!ok) {
+      alert("Couldn't save the payment. If this is the first time Paid is being used, make sure the task_payouts table has been created in Supabase (run task_payouts_migration.sql).");
+      return false;
+    }
+    setTaskPayouts((prev) => ({ ...prev, [empId]: [...(prev[empId] || []), ...rows] }));
+    return true;
+  }, [taskLogs, persist, currentUserId]);
+
+  const undoTaskPayout = useCallback(async (empId, payoutId) => {
+    const ok = await persist(sbDelete("task_payouts", payoutId));
+    if (!ok) {
+      alert("Couldn't undo that payment — please try again.");
+      return false;
+    }
+    setTaskPayouts((prev) => ({ ...prev, [empId]: (prev[empId] || []).filter((p) => p.id !== payoutId) }));
+    return true;
   }, [persist]);
 
   const submitBalance = useCallback(async (empId, { date, balance, screenshot, rawValue, wasPoints, ocrStatus, ocrBalance, ocrText, description, accountId }) => {
@@ -4630,6 +4897,7 @@ export default function App() {
               surveys={surveys}
               shifts={shifts}
               taskLogs={taskLogs}
+              taskPayouts={taskPayouts}
               accounts={accounts}
               accountEarnings={accountEarnings}
               balanceSubmissions={balanceSubmissions}
@@ -4643,6 +4911,7 @@ export default function App() {
                 addEmployee, setPin, setEmployeeUsername, toggleActive, changeRole, deleteEmployee, editSession, deleteSession, updateBreakMinutes, updateKesRate,
                 clockIn, clockOut, startBreak, endBreak, submitBalance,
                 addShift, deleteShift, editShift, addEarning, deleteEarning, addAccount, renameAccount, deleteAccount, reorderAccount, setAccountGroup,
+                markTasksPaid, undoTaskPayout,
               }}
             />
           ) : (
@@ -4652,6 +4921,7 @@ export default function App() {
               surveys={surveys[currentUser.id] || []}
               shifts={shifts[currentUser.id] || []}
               taskLogs={taskLogs[currentUser.id] || []}
+              taskPayouts={taskPayouts[currentUser.id] || []}
               balanceSubmissions={balanceSubmissions[currentUser.id] || []}
               breakMinutes={breakMinutes}
               kesRate={kesRate}
@@ -5283,6 +5553,22 @@ html, body { overflow-x: hidden; }
 .orb-task-grid th { background: var(--paper-2); color: var(--ink-soft); font-weight: 600; }
 .orb-task-grid td input[type="checkbox"] { width: 15px; height: 15px; cursor: pointer; }
 
+/* ---- Task pay (unpaid weeks strip + admin Paid card) ---- */
+.orb-paystrip { display: flex; gap: 8px; flex-wrap: wrap; margin: 4px 0 2px; }
+.orb-paychip { display: flex; flex-direction: column; align-items: flex-start; gap: 3px; padding: 8px 12px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface-translucent); font-family: inherit; color: var(--ink); cursor: pointer; text-align: left; transition: border-color var(--hover-speed) ease, background-color var(--hover-speed) ease; }
+.orb-paychip:hover { border-color: var(--line-hover); }
+.orb-paychip.active { border-color: var(--amber); background: rgba(245,176,66,0.12); }
+.orb-paychip-top { display: flex; align-items: center; gap: 8px; }
+.orb-paychip-name { font-weight: 700; font-size: 13px; }
+.orb-paychip-meta { font-size: 11.5px; color: var(--ink-soft); }
+.orb-badge-unpaid { background: rgba(214,120,24,0.15); color: #8A4B0B; }
+.orb-paycard { background: var(--surface-translucent); border: 1px solid var(--line); border-radius: 6px; padding: 12px 14px; display: flex; flex-direction: column; gap: 10px; }
+.orb-paycard-list { display: flex; flex-direction: column; gap: 6px; }
+.orb-paycard-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 13.5px; }
+.orb-paycard-week { font-weight: 700; color: var(--navy); }
+.orb-paycard-count { color: var(--ink-soft); font-size: 12.5px; }
+.orb-paycard-subhead { font-weight: 700; font-size: 13px; color: var(--navy); margin-top: 4px; }
+
 /* ---- Earnings / balance submission ---- */
 .orb-earnings-card { margin-top: 22px; border-top: 1px dashed var(--line-strong); padding-top: 18px; }
 .orb-cut-table td:first-child { font-weight: 600; }
@@ -5432,6 +5718,8 @@ html, body { overflow-x: hidden; }
      Shrinking the label specifically on phones gives the actual ticker
      room to breathe without touching how it looks on desktop. */
   .orb-ticker-label { padding: 6px 8px; font-size: 9px; gap: 4px; letter-spacing: 0.03em; }
+  /* Unpaid-week chips share the row evenly and wrap instead of overflowing. */
+  .orb-paychip { flex: 1 1 140px; }
   .orb-ticker-item { padding: 6px 14px; gap: 6px; font-size: 12px; }
 }
 `;
