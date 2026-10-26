@@ -227,6 +227,38 @@ async function uploadBalanceScreenshot(employeeId, dataUri, submissionId) {
   return path;
 }
 
+// Signs many screenshots in one request per 100 (Supabase's batch endpoint).
+// Signing them one by one at startup made Supabase answer 429 (too many
+// requests) once there were a few dozen screenshots.
+// Returns { [path]: url }; files that are missing are simply left out.
+async function createScreenshotSignedUrls(paths, expiresIn = 3600) {
+  const out = {};
+  const unique = [...new Set((paths || []).filter(Boolean))];
+  if (!DB_CONFIGURED || !unique.length) return out;
+  for (let i = 0; i < unique.length; i += 100) {
+    const chunk = unique.slice(i, i + 100);
+    try {
+      const res = await fetch(`${SB_URL}/storage/v1/object/sign/${BALANCE_BUCKET}`, {
+        method: "POST",
+        headers: sbHeaders(),
+        body: JSON.stringify({ expiresIn, paths: chunk }),
+      });
+      if (!res.ok) continue;
+      const rows = await res.json();
+      (Array.isArray(rows) ? rows : []).forEach((r) => {
+        const signed = r?.signedURL || r?.signedUrl;
+        if (!r?.path || !signed || r.error) return;
+        out[r.path] = signed.startsWith("http")
+          ? signed
+          : `${SB_URL}/storage/v1${signed.startsWith("/") ? signed : `/${signed}`}`;
+      });
+    } catch (e) {
+      console.warn("Orbital X: signing screenshots failed", e);
+    }
+  }
+  return out;
+}
+
 async function createScreenshotSignedUrl(path, expiresIn = 3600) {
   if (!DB_CONFIGURED || !path) return null;
   const encodedPath = path.split("/").map(encodeURIComponent).join("/");
@@ -4190,10 +4222,12 @@ export default function App() {
     });
 
     // Private bucket objects need short-lived signed URLs for display.
-    await Promise.all(Object.values(balanceByEmp).flat().map(async (b) => {
-      if (!b.screenshotPath) return;
-      b.screenshot = await createScreenshotSignedUrl(b.screenshotPath);
-    }));
+    // All of them in batched requests, not one request each.
+    const allBalances = Object.values(balanceByEmp).flat();
+    const signedUrls = await createScreenshotSignedUrls(allBalances.map((b) => b.screenshotPath));
+    allBalances.forEach((b) => {
+      if (b.screenshotPath) b.screenshot = signedUrls[b.screenshotPath] || null;
+    });
 
     setEmployees(empList);
     setTimeLogs(logsByEmp);
