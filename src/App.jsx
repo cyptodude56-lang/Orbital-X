@@ -29,8 +29,13 @@ const ORBIT_LOGO = `${import.meta.env.BASE_URL}logo.png`;/* ─── Connect yo
    ────────────────────────────────────────────────────────────────────── */
 // [CHANGED] Supabase credentials come from Vite environment variables.
 // Never hard-code the Supabase key in this file.
-const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || "";
-const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || "";
+// Accepts our own VITE_* names, or the NEXT_PUBLIC_* names that Vercel's
+// Supabase integration adds (vite.config.js exposes that prefix too).
+const ENV = import.meta.env;
+const SUPABASE_URL = ENV.VITE_SUPABASE_URL || ENV.NEXT_PUBLIC_SUPABASE_URL || "";
+const SUPABASE_ANON_KEY =
+  ENV.VITE_SUPABASE_PUBLISHABLE_KEY || ENV.VITE_SUPABASE_ANON_KEY ||
+  ENV.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || ENV.NEXT_PUBLIC_SUPABASE_ANON_KEY || "";
 
 const DB_CONFIGURED = /^https:\/\/.+\.supabase\.co\/?$/.test(SUPABASE_URL.trim()) && SUPABASE_ANON_KEY.trim().length > 20;
 const SB_URL = SUPABASE_URL.trim().replace(/\/$/, "");
