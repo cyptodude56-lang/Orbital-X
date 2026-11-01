@@ -5,8 +5,12 @@ import {
   BarChart3, KeyRound, Plus, Trash2, ArrowLeft, RefreshCw, Pencil,
   Check, X, ChevronDown, ChevronRight, ChevronLeft, ChevronUp, UserRound, Coffee, Settings,
   Home, Wifi, CalendarDays, DollarSign, Eye, Award, Grid3x3, Sun, Moon, AlertTriangle,
-  Camera, Mail, Phone, MapPin, FileText, Bell, Activity, ShieldCheck, Save
+  Camera, Mail, Phone, MapPin, FileText, Bell, Activity, ShieldCheck, Save,
+  Menu, PanelLeftClose, PanelLeftOpen, TrendingUp, Timer, Wallet
 } from "lucide-react";
+import {
+  motion, AnimatePresence, MotionConfig, animate, useMotionValue, useTransform, useReducedMotion,
+} from "motion/react";
 
 /* ============================================================================
    ORBITAL X — team time clock & survey production tracker
@@ -942,12 +946,96 @@ function OrbitDial({ active, paused, fractionOfHour, primary, secondary }) {
   );
 }
 
-function StatTile({ label, value, tone }) {
+/* ---------------------------------- Motion ---------------------------------- */
+// Shared timing for every Motion animation in the app (motion.dev).
+// Enter animations ease out and are a touch slower than exits, and the
+// whole app follows the visitor's "reduce motion" setting (see the
+// <MotionConfig reducedMotion="user"> in App).
+const EASE_OUT = [0.22, 1, 0.36, 1];
+const SPRING_UI = { type: "spring", stiffness: 420, damping: 36, mass: 0.8 };
+
+const staggerParent = {
+  hidden: {},
+  show: { transition: { staggerChildren: 0.045, delayChildren: 0.03 } },
+};
+const staggerItem = {
+  hidden: { opacity: 0, y: 10 },
+  show: { opacity: 1, y: 0, transition: { duration: 0.32, ease: EASE_OUT } },
+};
+
+// A container whose direct motion children (StatTile, roster rows) fade
+// and rise in one after another when the page opens.
+function StaggerGroup({ className, children }) {
   return (
-    <div className={`orb-stat orb-stat-${tone || "neutral"}`}>
-      <div className="orb-stat-value">{value}</div>
-      <div className="orb-stat-label">{label}</div>
-    </div>
+    <motion.div className={className} variants={staggerParent} initial="hidden" animate="show">
+      {children}
+    </motion.div>
+  );
+}
+
+// Page-level transition: the old page fades out quickly, the new one
+// rises in. Keyed by the current tab.
+function PageTransition({ pageKey, children }) {
+  return (
+    <AnimatePresence mode="wait">
+      <motion.div
+        key={pageKey}
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0, transition: { duration: 0.28, ease: EASE_OUT } }}
+        exit={{ opacity: 0, y: -6, transition: { duration: 0.14, ease: "easeIn" } }}
+      >
+        {children}
+      </motion.div>
+    </AnimatePresence>
+  );
+}
+
+// Numbers count up to their value ("$12.50", "45%", "7"). Values with
+// more than one number in them ("3h 20m") or no number ("—") just show.
+const SINGLE_NUMBER_RE = /^([^0-9]*?)(-?[0-9][0-9,]*(?:\.[0-9]+)?)([^0-9]*)$/;
+function formatCount(v, decimals, grouped) {
+  return grouped
+    ? v.toLocaleString("en-US", { minimumFractionDigits: decimals, maximumFractionDigits: decimals })
+    : v.toFixed(decimals);
+}
+function CountUp({ prefix, suffix, target, decimals, grouped }) {
+  const reduce = useReducedMotion();
+  const mv = useMotionValue(reduce ? target : 0);
+  const text = useTransform(mv, (v) => `${prefix}${formatCount(v, decimals, grouped)}${suffix}`);
+  useEffect(() => {
+    if (reduce) { mv.set(target); return undefined; }
+    const controls = animate(mv, target, { duration: 0.9, ease: EASE_OUT });
+    return () => controls.stop();
+  }, [target, reduce, mv]);
+  return <motion.span>{text}</motion.span>;
+}
+function AnimatedValue({ value }) {
+  const str = String(value ?? "");
+  const m = str.match(SINGLE_NUMBER_RE);
+  if (!m) return <span>{str}</span>;
+  const target = parseFloat(m[2].replace(/,/g, ""));
+  if (!Number.isFinite(target)) return <span>{str}</span>;
+  const decimals = (m[2].split(".")[1] || "").length;
+  return <CountUp key={`${m[1]}|${m[3]}|${decimals}`} prefix={m[1]} suffix={m[3]} target={target} decimals={decimals} grouped={m[2].includes(",")} />;
+}
+
+const STAT_ICONS = { amber: TrendingUp, teal: CheckCircle2, rose: XCircle, neutral: Activity };
+
+function StatTile({ label, value, tone, icon }) {
+  const Icon = icon || STAT_ICONS[tone || "neutral"] || Activity;
+  return (
+    <motion.div
+      className={`orb-stat orb-stat-${tone || "neutral"}`}
+      variants={staggerItem}
+      whileHover={{ y: -3 }}
+      transition={SPRING_UI}
+    >
+      <div className="orb-stat-head">
+        <span className="orb-stat-label">{label}</span>
+        <span className="orb-stat-icon" aria-hidden="true"><Icon size={15} /></span>
+      </div>
+      <div className="orb-stat-value"><AnimatedValue value={value} /></div>
+    </motion.div>
   );
 }
 
@@ -955,7 +1043,12 @@ function PinDots({ length, value }) {
   return (
     <div className="orb-pindots">
       {Array.from({ length }).map((_, i) => (
-        <span key={i} className={`orb-pindot ${i < value.length ? "filled" : ""}`} />
+        <motion.span
+          key={i}
+          className={`orb-pindot ${i < value.length ? "filled" : ""}`}
+          animate={{ scale: i < value.length ? [1, 1.45, 1] : 1 }}
+          transition={{ duration: 0.28, ease: EASE_OUT }}
+        />
       ))}
     </div>
   );
@@ -963,15 +1056,30 @@ function PinDots({ length, value }) {
 
 function Modal({ title, onClose, children, width }) {
   return (
-    <div className="orb-modal-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-      <div className="orb-modal" style={width ? { maxWidth: width } : undefined}>
+    <motion.div
+      className="orb-modal-overlay"
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      transition={{ duration: 0.18 }}
+      onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}
+    >
+      <motion.div
+        className="orb-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-label={title}
+        style={width ? { maxWidth: width } : undefined}
+        initial={{ opacity: 0, y: 14, scale: 0.97 }}
+        animate={{ opacity: 1, y: 0, scale: 1 }}
+        transition={SPRING_UI}
+      >
         <div className="orb-modal-head">
           <h3>{title}</h3>
           <button className="orb-icon-btn" onClick={onClose} aria-label="Close"><X size={18} /></button>
         </div>
         <div className="orb-modal-body">{children}</div>
-      </div>
-    </div>
+      </motion.div>
+    </motion.div>
   );
 }
 
@@ -1066,7 +1174,12 @@ function LoginScreen({ employees, onLogin, dbOk, onRetryDb, checkingDb }) {
           FloatingDollars is skipped entirely while on login (see App()). */}
       <LoginAssets />
 
-      <div className="orb-login-frame">
+      <motion.div
+        className="orb-login-frame"
+        initial={{ opacity: 0, y: 24, scale: 0.98 }}
+        animate={{ opacity: 1, y: 0, scale: 1 }}
+        transition={{ duration: 0.6, ease: EASE_OUT }}
+      >
         {/* The logo sits as its own badge straddling the top edge of the
             card, instead of stacked inside it — unchanged from before. */}
         <div className="orb-login-badge">
@@ -1092,12 +1205,20 @@ function LoginScreen({ employees, onLogin, dbOk, onRetryDb, checkingDb }) {
           </div>
         )}
 
+        <AnimatePresence mode="wait" initial={false}>
         {!picked ? (
+          <motion.div
+            key="step-username"
+            initial={{ opacity: 0, x: -18 }}
+            animate={{ opacity: 1, x: 0, transition: { duration: 0.26, ease: EASE_OUT } }}
+            exit={{ opacity: 0, x: -18, transition: { duration: 0.14, ease: "easeIn" } }}
+          >
           <div className="orb-pin-panel">
             <label className="orb-field-label" htmlFor="username-input">Username</label>
             <input
               id="username-input"
               ref={usernameRef}
+              autoFocus
               className="orb-input"
               type="text"
               autoCapitalize="none"
@@ -1114,7 +1235,14 @@ function LoginScreen({ employees, onLogin, dbOk, onRetryDb, checkingDb }) {
             </button>
             <div className="orb-hint">Don't know your username? Ask your admin.</div>
           </div>
+          </motion.div>
         ) : (
+          <motion.div
+            key="step-pin"
+            initial={{ opacity: 0, x: 18 }}
+            animate={{ opacity: 1, x: 0, transition: { duration: 0.26, ease: EASE_OUT } }}
+            exit={{ opacity: 0, x: 18, transition: { duration: 0.14, ease: "easeIn" } }}
+          >
           <div className={`orb-pin-panel ${shake ? "orb-shake" : ""}`}>
             <button className="orb-link-btn orb-back" onClick={() => { setPickedId(null); setUsernameInput(""); setPin(""); setError(""); }}>
               <ArrowLeft size={14} /> Not {picked.username || picked.name}?
@@ -1127,6 +1255,7 @@ function LoginScreen({ employees, onLogin, dbOk, onRetryDb, checkingDb }) {
             <input
               id="pin-input"
               ref={inputRef}
+              autoFocus
               className="orb-pin-input"
               type="password"
               inputMode="numeric"
@@ -1146,51 +1275,315 @@ function LoginScreen({ employees, onLogin, dbOk, onRetryDb, checkingDb }) {
             </button>
             <div className="orb-hint">Forgot your PIN? Ask your admin to reset it.</div>
           </div>
+          </motion.div>
         )}
+        </AnimatePresence>
         </div>
-      </div>
+      </motion.div>
     </div>
   );
 }
 
 /* ---------------------------------- Header ---------------------------------- */
 
-function Header({ user, onSignOut, onOpenProfile, dbOk, onRetryDb, checkingDb }) {
+/* ---------------------------------- App shell ---------------------------------- */
+// Employee-management layout used by admins and taskers alike: a navy
+// sidebar with grouped navigation (collapsible to an icon rail on desktop,
+// a slide-in drawer on phones), a sticky top bar, and a page header on
+// every screen. The amber pill behind the active item glides between items
+// (Motion layoutId) instead of jumping.
+
+const ADMIN_NAV = [
+  { group: "Dashboard", items: [
+    { key: "overview", label: "Overview", icon: Home },
+  ] },
+  { group: "Workforce", items: [
+    { key: "employees", label: "Employees", icon: Users },
+    { key: "schedule", label: "Schedule", icon: CalendarDays },
+    { key: "evaluations", label: "Evaluations", icon: Award },
+    { key: "taskerview", label: "Tasker view", icon: Eye },
+  ] },
+  { group: "Time & output", items: [
+    { key: "myclock", label: "My time clock", icon: Clock },
+    { key: "timelogs", label: "Time logs", icon: Activity },
+    { key: "reports", label: "Survey reports", icon: ClipboardList },
+  ] },
+  { group: "Payroll", items: [
+    { key: "accounts", label: "Accounts & earnings", icon: DollarSign },
+  ] },
+  { group: "System", items: [
+    { key: "settings", label: "Settings", icon: Settings },
+  ] },
+];
+
+const TASKER_TABS = [
+  { key: "clock", label: "Time clock", icon: Clock },
+  { key: "surveys", label: "Survey log", icon: ClipboardList },
+  { key: "tasklog", label: "Task log", icon: Grid3x3 },
+  { key: "schedule", label: "My schedule", icon: CalendarDays },
+  { key: "history", label: "My history", icon: BarChart3 },
+  { key: "profile", label: "My Profile", icon: UserRound },
+];
+
+const TASKER_NAV = [
+  { group: "My work", items: TASKER_TABS.slice(0, 3) },
+  { group: "Planning", items: TASKER_TABS.slice(3, 5) },
+];
+
+// Title + one-line description shown at the top of each page. Pages
+// without an entry (My Profile) bring their own header.
+const PAGE_META = {
+  overview: { title: "Overview", subtitle: "Live view of your team's hours, output and earnings." },
+  employees: { title: "Employees", subtitle: "Add team members and manage roles, usernames and PINs." },
+  schedule: { title: "Schedule", subtitle: "Plan day and night shifts for your team." },
+  evaluations: { title: "Evaluations", subtitle: "Performance by hours logged and survey success rate." },
+  taskerview: { title: "Tasker view", subtitle: "See any tasker's dashboard as they see it, and settle task pay." },
+  myclock: { title: "My time clock", subtitle: "Clock in, take breaks and submit your balance." },
+  timelogs: { title: "Time logs", subtitle: "Review and correct every clock-in and clock-out." },
+  reports: { title: "Survey reports", subtitle: "Survey outcomes by tasker and by week." },
+  accounts: { title: "Accounts & earnings", subtitle: "Track earnings per account and manage the account list." },
+  settings: { title: "Settings", subtitle: "Break length and currency conversion for the whole team." },
+  clock: { title: "Time clock", subtitle: "Clock in, take breaks and submit today's balance." },
+  surveys: { title: "Survey log", subtitle: "Log each survey as you finish it." },
+  tasklog: { title: "Task log", subtitle: "Mark the hours and tasks you've worked this week." },
+  history: { title: "My history", subtitle: "Your hours, week by week and day by day." },
+};
+
+function groupOfTab(nav, key) {
+  for (const g of nav) if (g.items.some((i) => i.key === key)) return g.group;
+  return key === "profile" ? "Account" : "";
+}
+
+function greetingFor(date) {
+  const h = date.getHours();
+  return h < 12 ? "Good morning" : h < 17 ? "Good afternoon" : "Good evening";
+}
+
+function useMediaQuery(query) {
+  const get = () => (typeof window !== "undefined" && window.matchMedia ? window.matchMedia(query).matches : false);
+  const [matches, setMatches] = useState(get);
+  useEffect(() => {
+    if (!window.matchMedia) return undefined;
+    const mq = window.matchMedia(query);
+    const onChange = () => setMatches(mq.matches);
+    onChange();
+    mq.addEventListener("change", onChange);
+    return () => mq.removeEventListener("change", onChange);
+  }, [query]);
+  return matches;
+}
+
+const SIDEBAR_KEY = "orbitalx_sidebar_collapsed";
+
+function UserAvatar({ user, size = 34 }) {
+  const initial = (user.name || "?").slice(0, 1).toUpperCase();
+  return (
+    <span className="orb-user-avatar" style={{ width: size, height: size, fontSize: Math.round(size * 0.42) }} aria-hidden="true">
+      {user.avatarUrl ? <img src={user.avatarUrl} alt="" /> : initial}
+    </span>
+  );
+}
+
+function SidebarNav({ nav, activeTab, onSelect, collapsed, user, onOpenProfile, onSignOut, pillId }) {
+  return (
+    <>
+      <div className="orb-side-brand">
+        <OrbitMark size={26} />
+        {!collapsed && (
+          <div className="orb-side-brand-text">
+            <span className="orb-side-wordmark">Orbital X</span>
+            <span className="orb-side-tag">Workforce</span>
+          </div>
+        )}
+      </div>
+
+      <nav className="orb-side-nav" aria-label="Main">
+        {nav.map((g) => (
+          <div className="orb-side-group" key={g.group}>
+            {!collapsed ? <div className="orb-side-group-label">{g.group}</div> : <div className="orb-side-group-rule" />}
+            {g.items.map((item) => {
+              const active = activeTab === item.key;
+              return (
+                <button
+                  key={item.key}
+                  className={`orb-nav-item ${active ? "active" : ""}`}
+                  onClick={() => onSelect(item.key)}
+                  aria-current={active ? "page" : undefined}
+                  title={collapsed ? item.label : undefined}
+                  aria-label={collapsed ? item.label : undefined}
+                >
+                  {active && <motion.span layoutId={pillId} className="orb-nav-pill" transition={SPRING_UI} />}
+                  <item.icon size={18} className="orb-nav-icon" />
+                  {!collapsed && <span className="orb-nav-label">{item.label}</span>}
+                </button>
+              );
+            })}
+          </div>
+        ))}
+      </nav>
+
+      <div className="orb-side-footer">
+        <button
+          className={`orb-side-user ${activeTab === "profile" ? "active" : ""}`}
+          onClick={onOpenProfile}
+          title={collapsed ? "My Profile" : undefined}
+          aria-label="My Profile"
+        >
+          {activeTab === "profile" && <motion.span layoutId={pillId} className="orb-nav-pill orb-nav-pill-soft" transition={SPRING_UI} />}
+          <UserAvatar user={user} size={34} />
+          {!collapsed && (
+            <span className="orb-side-user-text">
+              <span className="orb-side-user-name">{user.name}</span>
+              <span className="orb-side-user-role">{user.role === "admin" ? "Administrator" : "Tasker"}</span>
+            </span>
+          )}
+        </button>
+        <button className="orb-nav-item orb-nav-signout" onClick={onSignOut} title={collapsed ? "Sign out" : undefined} aria-label="Sign out">
+          <LogOut size={18} className="orb-nav-icon" />
+          {!collapsed && <span className="orb-nav-label">Sign out</span>}
+        </button>
+      </div>
+    </>
+  );
+}
+
+function AppShell({ user, nav, activeTab, onTabChange, onOpenProfile, onSignOut, dbOk, onRetryDb, checkingDb, ticker, children }) {
+  const isMobile = useMediaQuery("(max-width: 900px)");
+  const [collapsed, setCollapsed] = useState(() => {
+    try { return localStorage.getItem(SIDEBAR_KEY) === "1"; } catch { return false; }
+  });
+  const [drawerOpen, setDrawerOpen] = useState(false);
   const [now, setNow] = useState(new Date());
+
   useEffect(() => {
     const t = setInterval(() => setNow(new Date()), 30000);
     return () => clearInterval(t);
   }, []);
+  useEffect(() => {
+    try { localStorage.setItem(SIDEBAR_KEY, collapsed ? "1" : "0"); } catch { /* per-viewer nicety only */ }
+  }, [collapsed]);
+  useEffect(() => { if (!isMobile) setDrawerOpen(false); }, [isMobile]);
+  useEffect(() => {
+    if (!drawerOpen) return undefined;
+    const onKey = (e) => { if (e.key === "Escape") setDrawerOpen(false); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [drawerOpen]);
+
+  const select = (key) => { onTabChange(key); setDrawerOpen(false); };
+  const openProfile = () => { onOpenProfile(); setDrawerOpen(false); };
+  const signOut = () => { setDrawerOpen(false); onSignOut(); };
+  const group = groupOfTab(nav, activeTab);
+  const meta = PAGE_META[activeTab];
+  const sideCollapsed = collapsed && !isMobile;
+
   return (
-    <header className="orb-header">
-      <div className="orb-brand">
-        <OrbitMark size={24} />
-        <span className="orb-wordmark orb-wordmark-sm">Orbital X</span>
-        {!dbOk && (
-          <button className="orb-header-storage-warn" onClick={onRetryDb} disabled={checkingDb} title="Changes aren't being saved. Tap to retry.">
-            <RefreshCw size={12} /> {checkingDb ? "Checking…" : "Not saving — retry"}
-          </button>
+    <div className={`orb-shell ${sideCollapsed ? "is-collapsed" : ""}`}>
+      {!isMobile && (
+        <motion.aside
+          className="orb-side"
+          initial={false}
+          animate={{ width: sideCollapsed ? 78 : 252 }}
+          transition={SPRING_UI}
+        >
+          <SidebarNav nav={nav} activeTab={activeTab} onSelect={select} collapsed={sideCollapsed} user={user} onOpenProfile={openProfile} onSignOut={signOut} pillId="orb-nav-pill-desktop" />
+        </motion.aside>
+      )}
+
+      <AnimatePresence>
+        {isMobile && drawerOpen && (
+          <>
+            <motion.div
+              key="drawer-backdrop"
+              className="orb-drawer-backdrop"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.2 }}
+              onClick={() => setDrawerOpen(false)}
+            />
+            <motion.aside
+              key="drawer"
+              className="orb-side orb-side-drawer"
+              role="dialog"
+              aria-modal="true"
+              aria-label="Navigation"
+              initial={{ x: "-100%" }}
+              animate={{ x: 0 }}
+              exit={{ x: "-100%", transition: { duration: 0.2, ease: "easeIn" } }}
+              transition={SPRING_UI}
+            >
+              <button className="orb-drawer-close" onClick={() => setDrawerOpen(false)} aria-label="Close menu"><X size={18} /></button>
+              <SidebarNav nav={nav} activeTab={activeTab} onSelect={select} collapsed={false} user={user} onOpenProfile={openProfile} onSignOut={signOut} pillId="orb-nav-pill-drawer" />
+            </motion.aside>
+          </>
         )}
+      </AnimatePresence>
+
+      <div className="orb-main">
+        <div className="orb-topbar-stack">
+          <header className="orb-topbar">
+            <div className="orb-topbar-left">
+              <button
+                className="orb-topbar-btn"
+                onClick={() => (isMobile ? setDrawerOpen(true) : setCollapsed((c) => !c))}
+                aria-label={isMobile ? "Open menu" : sideCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+              >
+                {isMobile ? <Menu size={19} /> : sideCollapsed ? <PanelLeftOpen size={18} /> : <PanelLeftClose size={18} />}
+              </button>
+              {isMobile && (
+                <span className="orb-topbar-brand"><OrbitMark size={22} /> Orbital X</span>
+              )}
+              {!isMobile && (
+                <nav className="orb-crumbs" aria-label="Breadcrumb">
+                  <span>{user.role === "admin" ? "Admin" : "Workspace"}</span>
+                  {group && <><ChevronRight size={13} aria-hidden="true" /><span>{group}</span></>}
+                  <ChevronRight size={13} aria-hidden="true" />
+                  <span className="orb-crumb-current">{meta ? meta.title : "My Profile"}</span>
+                </nav>
+              )}
+            </div>
+            <div className="orb-topbar-right">
+              {dbOk ? (
+                <span className="orb-status-pill" title="Changes are saved to the database">
+                  <span className="orb-dot orb-dot-teal orb-dot-pulse" /> Synced
+                </span>
+              ) : (
+                <button className="orb-status-pill orb-status-pill-warn" onClick={onRetryDb} disabled={checkingDb} title="Changes aren't being saved. Tap to retry.">
+                  <RefreshCw size={12} className={checkingDb ? "orb-spin" : ""} /> {checkingDb ? "Checking…" : "Not saving · retry"}
+                </button>
+              )}
+              <span className="orb-topbar-clock">
+                <CalendarDays size={14} aria-hidden="true" />
+                {now.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" })} · {now.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}
+              </span>
+              <button className="orb-topbar-user" onClick={openProfile} aria-label="My Profile">
+                <UserAvatar user={user} size={30} />
+                <span className="orb-topbar-user-name">{user.name}</span>
+              </button>
+            </div>
+          </header>
+          {ticker}
+        </div>
+
+        <main className="orb-content">
+          <PageTransition pageKey={activeTab}>
+            {meta && (
+              <div className="orb-page-header">
+                <div className="orb-page-eyebrow">
+                  {activeTab === "overview" || activeTab === "clock"
+                    ? `${greetingFor(now)}, ${(user.name || "").split(" ")[0]}`
+                    : group}
+                </div>
+                <h1 className="orb-page-title">{meta.title}</h1>
+                <p className="orb-page-subtitle">{meta.subtitle}</p>
+              </div>
+            )}
+            {children}
+          </PageTransition>
+        </main>
       </div>
-      <div className="orb-header-right">
-        <span className="orb-header-clock">
-          {now.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" })} · {now.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}
-        </span>
-        <span className="orb-header-user">
-          <UserRound size={15} /> {user.name}
-        </span>
-        {/* [CHANGED] The old Admin badge + standalone "PIN" button (PIN
-            change now lives inside My Profile, as "Change PIN") are
-            replaced with direct access to the profile page, right next
-            to Sign out. */}
-        <button className="orb-btn orb-btn-ghost orb-btn-sm" onClick={onOpenProfile}>
-          <UserRound size={14} /> My Profile
-        </button>
-        <button className="orb-btn orb-btn-ghost orb-btn-sm" onClick={onSignOut}>
-          <LogOut size={14} /> Sign out
-        </button>
-      </div>
-    </header>
+    </div>
   );
 }
 
@@ -1832,10 +2225,10 @@ function BalanceSubmitCard({ submissions, onSubmit, readOnly, kesRate, accounts 
   return (
     <div className="orb-panel orb-earnings-card">
       <div className="orb-subhead" style={{ marginTop: 0 }}>Earnings</div>
-      <div className="orb-stat-row">
+      <StaggerGroup className="orb-stat-row">
         <StatTile label="Today" value={todayEarned === null ? "—" : fmtMoney(todayEarned)} tone="amber" />
         <StatTile label="This week" value={fmtMoney(weekEarned)} tone="neutral" />
-      </div>
+      </StaggerGroup>
 
       <div className="orb-subhead">Your cut</div>
       <div className="orb-table-wrap">
@@ -2079,11 +2472,11 @@ function TimeClockTab({ sessions, breakMinutes, onClockIn, onClockOut, onStartBr
         </div>
       )}
 
-      <div className="orb-stat-row">
+      <StaggerGroup className="orb-stat-row">
         <StatTile label="Today" value={fmtHM(todayMs)} tone="amber" />
         <StatTile label="This week" value={fmtHM(weekMs)} tone="neutral" />
         <StatTile label="Sessions today" value={todaySessions.length} tone="neutral" />
-      </div>
+      </StaggerGroup>
 
       <div className="orb-subhead">Today's sessions</div>
       {todaySessions.length === 0 ? (
@@ -2153,12 +2546,12 @@ function SurveyLogTab({ liveEntries, importedWeeks, onLog, onDeleteEntry, readOn
   return (
     <div className="orb-panel">
       <div className="orb-subhead">{weekLabel(now)}</div>
-      <div className="orb-stat-row">
+      <StaggerGroup className="orb-stat-row">
         <StatTile label="Total logged" value={total} tone="neutral" />
         <StatTile label="Successful" value={successful} tone="teal" />
         <StatTile label="Screened out" value={screenedOut} tone="rose" />
         <StatTile label="Success rate" value={`${pct(successful, total)}%`} tone="amber" />
-      </div>
+      </StaggerGroup>
 
       {!readOnly && (
         <div className="orb-log-buttons">
@@ -2572,7 +2965,7 @@ function TaskLogTab({ taskLogs, taskPayouts, onToggleCell, onDuplicateWeeks, rea
 
 /* ---------------------------------- Tasker view shell ---------------------------------- */
 
-function TaskerView({ user, sessions, surveys, shifts, taskLogs, taskPayouts, breakMinutes, balanceSubmissions, onClockIn, onClockOut, onStartBreak, onEndBreak, onLogSurvey, onDeleteSurvey, onToggleTaskCell, onSubmitBalance, onDuplicateTaskWeeks, readOnly, kesRate, accounts, activeTab, onTabChange, onSaveProfile, onOpenChangePin }) {
+function TaskerView({ user, sessions, surveys, shifts, taskLogs, taskPayouts, breakMinutes, balanceSubmissions, onClockIn, onClockOut, onStartBreak, onEndBreak, onLogSurvey, onDeleteSurvey, onToggleTaskCell, onSubmitBalance, onDuplicateTaskWeeks, readOnly, kesRate, accounts, activeTab, onTabChange, onSaveProfile, onOpenChangePin, embedded }) {
   // [CHANGED] Tab selection is now controlled by the parent (App) instead
   // of local state, so the header's "My Profile" link can jump straight
   // to the "profile" tab from outside this component.
@@ -2580,27 +2973,23 @@ function TaskerView({ user, sessions, surveys, shifts, taskLogs, taskPayouts, br
   const setTab = onTabChange;
   const importedWeeks = IMPORTED_SURVEY_HISTORY[user.id] || [];
   return (
-    <div className="orb-body">
-      <div className="orb-tabs">
-        <button className={`orb-tab ${tab === "clock" ? "active" : ""}`} onClick={() => setTab("clock")}>
-          <Clock size={15} /> Time clock
-        </button>
-        <button className={`orb-tab ${tab === "surveys" ? "active" : ""}`} onClick={() => setTab("surveys")}>
-          <ClipboardList size={15} /> Survey log
-        </button>
-        <button className={`orb-tab ${tab === "tasklog" ? "active" : ""}`} onClick={() => setTab("tasklog")}>
-          <Grid3x3 size={15} /> Task log
-        </button>
-        <button className={`orb-tab ${tab === "schedule" ? "active" : ""}`} onClick={() => setTab("schedule")}>
-          <CalendarDays size={15} /> My schedule
-        </button>
-        <button className={`orb-tab ${tab === "history" ? "active" : ""}`} onClick={() => setTab("history")}>
-          <BarChart3 size={15} /> My history
-        </button>
-        <button className={`orb-tab ${tab === "profile" ? "active" : ""}`} onClick={() => setTab("profile")}>
-          <UserRound size={15} /> My Profile
-        </button>
-      </div>
+    <div className={embedded ? "orb-body" : "orb-page-body"}>
+      {embedded && (
+        <div className="orb-tabs" role="tablist">
+          {TASKER_TABS.map((t) => (
+            <button
+              key={t.key}
+              role="tab"
+              aria-selected={tab === t.key}
+              className={`orb-tab ${tab === t.key ? "active" : ""}`}
+              onClick={() => setTab(t.key)}
+            >
+              <t.icon size={15} /> {t.label}
+              {tab === t.key && <motion.span layoutId="orb-tasker-tab-line" className="orb-tab-line" transition={SPRING_UI} />}
+            </button>
+          ))}
+        </div>
+      )}
       {tab === "clock" && (
         <TimeClockTab
           sessions={sessions}
@@ -2664,21 +3053,21 @@ function OverviewTab({ employees, timeLogs, surveys, balanceSubmissions, account
 
   return (
     <div className="orb-panel">
-      <div className="orb-stat-row">
-        <StatTile label="Team hours today" value={fmtHM(todayHours)} tone="amber" />
-        <StatTile label="Team hours this week" value={fmtHM(weekHours)} tone="neutral" />
-        <StatTile label="Surveys today" value={todaySurveys} tone="neutral" />
-        <StatTile label="Surveys this week" value={weekSurveys} tone="neutral" />
-      </div>
-      <div className="orb-stat-row">
+      <StaggerGroup className="orb-stat-row">
+        <StatTile label="Team hours today" value={fmtHM(todayHours)} tone="amber" icon={Timer} />
+        <StatTile label="Team hours this week" value={fmtHM(weekHours)} tone="neutral" icon={Clock} />
+        <StatTile label="Surveys today" value={todaySurveys} tone="neutral" icon={ClipboardList} />
+        <StatTile label="Surveys this week" value={weekSurveys} tone="neutral" icon={BarChart3} />
+      </StaggerGroup>
+      <StaggerGroup className="orb-stat-row">
         <StatTile label="Success rate today" value={`${pct(todaySuccess, todaySurveys)}%`} tone="teal" />
         <StatTile label="Success rate this week" value={`${pct(weekSuccess, weekSurveys)}%`} tone="teal" />
-        <StatTile label="Team earned today" value={fmtMoney(teamEarnedToday)} tone="amber" />
-        <StatTile label="Team earned this week" value={fmtMoney(teamEarnedWeek)} tone="amber" />
-      </div>
+        <StatTile label="Team earned today" value={fmtMoney(teamEarnedToday)} tone="amber" icon={Wallet} />
+        <StatTile label="Team earned this week" value={fmtMoney(teamEarnedWeek)} tone="amber" icon={DollarSign} />
+      </StaggerGroup>
 
       <div className="orb-subhead">Team status right now</div>
-      <div className="orb-roster">
+      <StaggerGroup className="orb-roster">
         {taskers.length === 0 && <div className="orb-empty">No taskers yet, add your team under Employees.</div>}
         {taskers.map((emp) => {
           const sessions = timeLogs[emp.id] || [];
@@ -2688,8 +3077,8 @@ function OverviewTab({ employees, timeLogs, surveys, balanceSubmissions, account
           const earnedToday = earningsForDay(subs, todayKey, accounts);
           const earnedWeek = earningsForWeek(subs, now, accounts);
           return (
-            <div key={emp.id} className="orb-roster-row">
-              <span className={`orb-dot ${onBreak ? "orb-dot-amber" : open ? "orb-dot-teal" : "orb-dot-muted"}`} />
+            <motion.div key={emp.id} className="orb-roster-row" variants={staggerItem}>
+              <span className={`orb-dot ${onBreak ? "orb-dot-amber" : open ? "orb-dot-teal orb-dot-pulse" : "orb-dot-muted"}`} />
               <span className="orb-avatar orb-avatar-sm">{emp.name.slice(0, 1).toUpperCase()}</span>
               <span className="orb-roster-name">{emp.name}</span>
               {!emp.active && <span className="orb-badge orb-badge-muted">Inactive</span>}
@@ -2699,10 +3088,10 @@ function OverviewTab({ employees, timeLogs, surveys, balanceSubmissions, account
               <span className="orb-roster-earnings">
                 {earnedToday === null ? "No update today" : `${fmtMoney(earnedToday)} today`} · {fmtMoney(earnedWeek)} wk
               </span>
-            </div>
+            </motion.div>
           );
         })}
-      </div>
+      </StaggerGroup>
     </div>
   );
 }
@@ -3049,10 +3438,10 @@ function TimeLogsTab({ employees, timeLogs, onSaveSession, onDeleteSession }) {
         </div>
       </div>
 
-      <div className="orb-stat-row">
+      <StaggerGroup className="orb-stat-row">
         <StatTile label="Sessions shown" value={rows.length} tone="neutral" />
         <StatTile label="Hours shown" value={fmtHM(totalMs)} tone="amber" />
-      </div>
+      </StaggerGroup>
 
       {rows.length === 0 ? (
         <div className="orb-empty">No sessions in this range.</div>
@@ -3155,12 +3544,12 @@ function SurveyReportsTab({ employees, surveys }) {
         </select>
       </div>
 
-      <div className="orb-stat-row">
+      <StaggerGroup className="orb-stat-row">
         <StatTile label="Total (shown rows)" value={totalSuccess + totalScreened} tone="neutral" />
         <StatTile label="Successful" value={totalSuccess} tone="teal" />
         <StatTile label="Screened out" value={totalScreened} tone="rose" />
         <StatTile label="Success rate" value={`${pct(totalSuccess, totalSuccess + totalScreened)}%`} tone="amber" />
-      </div>
+      </StaggerGroup>
 
       {rows.length === 0 ? (
         <div className="orb-empty">No survey activity on record yet.</div>
@@ -3538,12 +3927,12 @@ function AdminAccountsTab({ accounts, earnings, onAddEarning, onDeleteEarning, o
         <button className="orb-btn orb-btn-primary" onClick={submit}><Plus size={15} /> Add</button>
       </div>
 
-      <div className="orb-stat-row">
+      <StaggerGroup className="orb-stat-row">
         <StatTile label="Earned today" value={fmtMoney(totals.today)} tone="amber" />
         <StatTile label="Earned this week" value={fmtMoney(totals.week)} tone="neutral" />
         <StatTile label="Earned this month" value={fmtMoney(totals.month)} tone="neutral" />
         <StatTile label="All time" value={fmtMoney(totals.allTime)} tone="teal" />
-      </div>
+      </StaggerGroup>
 
       <div className="orb-filter-row">
         <div className="orb-segment">
@@ -3764,12 +4153,12 @@ function AdminEvaluationsTab({ employees, timeLogs, surveys }) {
   return (
     <div className="orb-panel">
       <div className="orb-hint">{weekLabel(now)} — resets automatically each week.</div>
-      <div className="orb-stat-row">
+      <StaggerGroup className="orb-stat-row">
         <StatTile label="Total taskers" value={taskers.length} tone="neutral" />
         <StatTile label="Total hours logged" value={totalHours.toFixed(1)} tone="amber" />
         <StatTile label="Total surveys completed" value={totalCompleted} tone="neutral" />
         <StatTile label="Avg success rate" value={`${pct(totalSuccessful, totalCompleted)}%`} tone="teal" />
-      </div>
+      </StaggerGroup>
 
       {rows.length === 0 ? (
         <div className="orb-empty">No taskers yet.</div>
@@ -3866,13 +4255,13 @@ function AdminTaskerViewTab({ employees, timeLogs, surveys, shifts, taskLogs, ta
         <span className="orb-badge orb-badge-muted">Read-only</span>
       </div>
 
-      <div className="orb-stat-row">
+      <StaggerGroup className="orb-stat-row">
         <StatTile label="Status" value={openBreak ? "On break" : openSession ? "Clocked in" : "Clocked out"} tone={openBreak ? "amber" : openSession ? "teal" : "neutral"} />
         <StatTile label="Today" value={fmtHM(todayMs)} tone="amber" />
         <StatTile label="This week" value={fmtHM(weekMs)} tone="neutral" />
         <StatTile label="Success rate (wk)" value={`${pct(weekSuccess, weekEntries.length)}%`} tone="teal" />
         <StatTile label="Earned this week" value={fmtMoney(earnedWeek)} tone="amber" />
-      </div>
+      </StaggerGroup>
 
       {/* [ADDED] Task pay — tasks are paid the Friday after the week they
           were done, so finished weeks stay in the tasker's Task log until
@@ -3969,6 +4358,7 @@ function AdminTaskerViewTab({ employees, timeLogs, surveys, shifts, taskLogs, ta
           onSubmitBalance={noop}
           onDuplicateTaskWeeks={noop}
           readOnly
+          embedded
           kesRate={kesRate}
         />
       </div>
@@ -3983,32 +4373,9 @@ function AdminView({ user, employees, timeLogs, surveys, shifts, taskLogs, taskP
   // of local state, so the header's "My Profile" link can jump straight
   // to the "profile" tab from outside this component.
   const tab = activeTab;
-  const setTab = onTabChange;
-
-  const nav = [
-    { key: "overview", label: "Overview", icon: BarChart3 },
-    { key: "myclock", label: "My time clock", icon: Clock },
-    { key: "employees", label: "Employees", icon: Users },
-    { key: "timelogs", label: "Time logs", icon: Clock },
-    { key: "schedule", label: "Schedule", icon: CalendarDays },
-    { key: "reports", label: "Survey reports", icon: ClipboardList },
-    { key: "evaluations", label: "Evaluations", icon: Award },
-    { key: "accounts", label: "Accounts", icon: DollarSign },
-    { key: "taskerview", label: "Tasker view", icon: Eye },
-    { key: "settings", label: "Settings", icon: Settings },
-    { key: "profile", label: "My Profile", icon: UserRound },
-  ];
 
   return (
-    <div className="orb-admin">
-      <nav className="orb-sidebar">
-        {nav.map((n) => (
-          <button key={n.key} className={`orb-sidebar-btn ${tab === n.key ? "active" : ""}`} onClick={() => setTab(n.key)}>
-            <n.icon size={16} /> {n.label}
-          </button>
-        ))}
-      </nav>
-      <div className="orb-body">
+    <div className="orb-page-body">
         {tab === "overview" && <OverviewTab employees={employees} timeLogs={timeLogs} surveys={surveys} balanceSubmissions={balanceSubmissions} accounts={accounts} />}
         {tab === "myclock" && (
           <TimeClockTab
@@ -4061,7 +4428,6 @@ function AdminView({ user, employees, timeLogs, surveys, shifts, taskLogs, taskP
             onOpenChangePin={onOpenChangePin}
           />
         )}
-      </div>
     </div>
   );
 }
@@ -4882,6 +5248,7 @@ export default function App() {
   }, [persist]);
 
   return (
+    <MotionConfig reducedMotion="user">
     <div className="orb-app">
       <style>{CSS}</style>
       {/* [CHANGED] The $ layer now skips the sign-in screen — LoginScreen
@@ -4889,13 +5256,13 @@ export default function App() {
           LoginAssets). Loading and the signed-in app keep the $ signs. */}
       {(loading || currentUser) && <FloatingDollars />}
       {loading ? (
-        <div className="orb-loading">
+        <motion.div className="orb-loading" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.4 }}>
           <div className="orb-loading-mark">
             <OrbitMark size={32} />
             <div className="orb-loading-ring" aria-hidden="true" />
           </div>
           <span>Loading Orbital X…</span>
-        </div>
+        </motion.div>
       ) : !currentUser ? (
         <LoginScreen
           employees={employees}
@@ -4905,29 +5272,21 @@ export default function App() {
           checkingDb={checkingDb}
         />
       ) : (
-        <div className="orb-shell">
-          {/* [ADDED] Header + RankTicker share one sticky wrapper instead of
-              each being independently `position: sticky`. The ticker needs
-              to sit flush against the header's bottom edge at every width,
-              but the header's own height isn't fixed (it wraps to two rows
-              on narrow screens — see the mobile header fix). Stickying the
-              pair together as one block means they always stack correctly
-              without hardcoding a height that would drift out of sync on
-              phones, the same class of bug as the earlier mobile nav fix. */}
-          <div className="orb-topbar-stack">
-            <Header
-              user={currentUser}
-              onSignOut={() => setCurrentUserId(null)}
-              onOpenProfile={() => {
-                if (currentUser.role === "admin") setAdminTab("profile");
-                else setTaskerTab("profile");
-              }}
-              dbOk={dbOk}
-              onRetryDb={retryDbAfterLogin}
-              checkingDb={checkingDb}
-            />
-            <RankTicker employees={employees} balanceSubmissions={balanceSubmissions} accounts={accounts} />
-          </div>
+        <AppShell
+          user={currentUser}
+          nav={currentUser.role === "admin" ? ADMIN_NAV : TASKER_NAV}
+          activeTab={currentUser.role === "admin" ? adminTab : taskerTab}
+          onTabChange={currentUser.role === "admin" ? setAdminTab : setTaskerTab}
+          onOpenProfile={() => {
+            if (currentUser.role === "admin") setAdminTab("profile");
+            else setTaskerTab("profile");
+          }}
+          onSignOut={() => setCurrentUserId(null)}
+          dbOk={dbOk}
+          onRetryDb={retryDbAfterLogin}
+          checkingDb={checkingDb}
+          ticker={<RankTicker employees={employees} balanceSubmissions={balanceSubmissions} accounts={accounts} />}
+        >
           {currentUser.role === "admin" ? (
             <AdminView
               user={currentUser}
@@ -4983,9 +5342,10 @@ export default function App() {
           {showChangePin && (
             <ChangePinModal user={currentUser} onClose={() => setShowChangePin(false)} onSave={changeOwnPin} />
           )}
-        </div>
+        </AppShell>
       )}
     </div>
+    </MotionConfig>
   );
 }
 
@@ -5761,4 +6121,221 @@ html, body { overflow-x: hidden; }
   .orb-paychip { flex: 1 1 140px; }
   .orb-ticker-item { padding: 6px 14px; gap: 6px; font-size: 12px; }
 }
+/* ============================================================================
+   [ADDED] Employee-management shell + refreshed surfaces.
+   Same palette as before (navy #0F1A2C, amber #F5B042→#E09E2A, teal, rose);
+   only layout, elevation and motion change. Everything below overrides the
+   older rules above it.
+   ============================================================================ */
+.orb-app {
+  --canvas: #F4F5F8;
+  --card: rgba(255,255,255,0.9);
+  --card-border: rgba(15,26,44,0.08);
+  --shadow-card: 0 1px 2px rgba(15,26,44,0.04), 0 8px 24px -14px rgba(15,26,44,0.14);
+  --shadow-card-hover: 0 2px 4px rgba(15,26,44,0.05), 0 16px 32px -16px rgba(15,26,44,0.22);
+  --radius: 12px;
+  --radius-sm: 8px;
+  --side-text: rgba(255,255,255,0.68);
+  /* Snappier hovers (150–250ms) for a work tool used all day. */
+  --hover-speed: .2s;
+  --hover-speed-fast: .18s;
+  --surface-glass: var(--card);
+  --surface-translucent: rgba(255,255,255,0.94);
+  --text-halo: none;
+  background: var(--canvas);
+}
+.orb-app :focus-visible { outline: 2px solid var(--amber); outline-offset: 2px; }
+
+/* Floating $ — toned down: behind content, faint, and slower. */
+.orb-dollar-bg { z-index: 0; opacity: 0.42; }
+.orb-dollar { color: rgba(245,176,66,0.22); text-shadow: none; animation-duration: 70s !important; }
+.orb-dollar.navy { color: rgba(15,26,44,0.07); text-shadow: none; }
+.orb-dollar:nth-child(even) { animation-duration: 90s !important; }
+
+/* ---- Layout ---- */
+.orb-shell { min-height: 100vh; display: flex; flex-direction: row; align-items: stretch; position: relative; z-index: 1; text-align: left; }
+.orb-side {
+  position: sticky; top: 0; height: 100vh; flex-shrink: 0; overflow: hidden;
+  background: linear-gradient(180deg, #0F1A2C 0%, #13213A 100%);
+  color: #fff; display: flex; flex-direction: column; padding: 18px 12px 14px;
+  box-shadow: 1px 0 0 rgba(255,255,255,0.04), 6px 0 24px -12px rgba(15,26,44,0.35);
+  z-index: 30;
+}
+.orb-side-brand { display: flex; align-items: center; gap: 10px; padding: 4px 8px 18px; min-height: 52px; }
+.orb-side-brand-text { display: flex; flex-direction: column; line-height: 1.1; white-space: nowrap; }
+.orb-side-wordmark { font-weight: 800; font-size: 17px; letter-spacing: -0.02em; }
+.orb-side-tag { font-size: 10px; font-weight: 700; letter-spacing: 2px; text-transform: uppercase; color: var(--amber); margin-top: 3px; }
+.orb-side-nav { flex: 1; overflow-y: auto; overflow-x: hidden; display: flex; flex-direction: column; gap: 14px; scrollbar-width: none; padding-bottom: 8px; }
+.orb-side-nav::-webkit-scrollbar { display: none; }
+.orb-side-group { display: flex; flex-direction: column; gap: 2px; }
+.orb-side-group-label { font-size: 10.5px; font-weight: 700; letter-spacing: 1.2px; text-transform: uppercase; color: rgba(255,255,255,0.38); padding: 0 12px 6px; white-space: nowrap; }
+.orb-side-group-rule { height: 1px; background: rgba(255,255,255,0.08); margin: 2px 14px 8px; }
+.orb-nav-item {
+  position: relative; display: flex; align-items: center; gap: 11px; width: 100%;
+  min-height: 42px; padding: 0 12px; border: none; border-radius: 10px; background: none;
+  color: var(--side-text); font-family: inherit; font-size: 13.5px; font-weight: 600; text-align: left;
+  cursor: pointer; white-space: nowrap; transition: color var(--hover-speed) ease, background-color var(--hover-speed) ease;
+}
+.orb-nav-item:hover:not(.active) { background: rgba(255,255,255,0.06); color: #fff; }
+.orb-nav-item.active { color: var(--navy); font-weight: 700; }
+.orb-nav-icon, .orb-nav-label { position: relative; z-index: 1; flex-shrink: 0; }
+.orb-nav-pill { position: absolute; inset: 0; border-radius: 10px; background: var(--amber-gradient); box-shadow: 0 8px 20px -10px rgba(245,176,66,0.75); z-index: 0; }
+.orb-nav-pill-soft { background: rgba(245,176,66,0.16); box-shadow: inset 0 0 0 1px rgba(245,176,66,0.45); }
+.is-collapsed .orb-nav-item { justify-content: center; padding: 0; }
+.is-collapsed .orb-side-brand { justify-content: center; padding-left: 0; padding-right: 0; }
+
+.orb-side-footer { border-top: 1px solid rgba(255,255,255,0.08); padding-top: 12px; display: flex; flex-direction: column; gap: 4px; }
+.orb-side-user { position: relative; display: flex; align-items: center; gap: 10px; width: 100%; padding: 8px; border-radius: 10px; border: none; background: rgba(255,255,255,0.04); color: #fff; font-family: inherit; text-align: left; cursor: pointer; transition: background-color var(--hover-speed) ease; }
+.orb-side-user:hover { background: rgba(255,255,255,0.09); }
+.orb-side-user > * { position: relative; z-index: 1; }
+.orb-side-user > .orb-nav-pill { position: absolute; z-index: 0; }
+.is-collapsed .orb-side-user { justify-content: center; background: none; }
+.orb-side-user-text { display: flex; flex-direction: column; min-width: 0; }
+.orb-side-user-name { font-size: 13.5px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.orb-side-user-role { font-size: 11.5px; color: rgba(255,255,255,0.5); }
+.orb-nav-signout:hover { color: #FFB4AE !important; background: rgba(210,86,78,0.14) !important; }
+
+.orb-user-avatar { border-radius: 50%; background: var(--amber-gradient); color: var(--navy); display: inline-flex; align-items: center; justify-content: center; font-weight: 800; flex-shrink: 0; overflow: hidden; box-shadow: 0 0 0 2px rgba(255,255,255,0.14); }
+.orb-user-avatar img { width: 100%; height: 100%; object-fit: cover; }
+
+.orb-drawer-backdrop { position: fixed; inset: 0; background: rgba(15,26,44,0.5); z-index: 60; }
+.orb-side-drawer { position: fixed; left: 0; top: 0; bottom: 0; width: min(290px, 86vw); height: 100%; z-index: 61; }
+.orb-drawer-close { position: absolute; top: 18px; right: 12px; z-index: 2; width: 36px; height: 36px; display: inline-flex; align-items: center; justify-content: center; border-radius: 9px; border: none; background: rgba(255,255,255,0.08); color: #fff; cursor: pointer; }
+
+.orb-main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.orb-topbar-stack { position: sticky; top: 0; z-index: 25; }
+.orb-topbar {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  min-height: 64px; padding: 10px 24px;
+  background: rgba(255,255,255,0.86); backdrop-filter: blur(12px) saturate(140%); -webkit-backdrop-filter: blur(12px) saturate(140%);
+  border-bottom: 1px solid var(--card-border);
+}
+.orb-topbar-left, .orb-topbar-right { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.orb-topbar-btn { width: 40px; height: 40px; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; border-radius: 10px; border: 1px solid var(--card-border); background: #fff; color: var(--navy); cursor: pointer; transition: background-color var(--hover-speed) ease, border-color var(--hover-speed) ease; }
+.orb-topbar-btn:hover { border-color: var(--line-hover); background: #FFFBF3; }
+.orb-topbar-brand { white-space: nowrap; display: inline-flex; align-items: center; gap: 8px; font-weight: 800; font-size: 16px; color: var(--navy); }
+.orb-crumbs { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--ink-soft); font-weight: 500; white-space: nowrap; overflow: hidden; }
+.orb-crumb-current { color: var(--navy); font-weight: 700; }
+.orb-status-pill { display: inline-flex; align-items: center; gap: 7px; height: 32px; padding: 0 12px; border-radius: 999px; background: var(--teal-soft); color: var(--teal); font-size: 12px; font-weight: 700; border: none; font-family: inherit; white-space: nowrap; }
+.orb-status-pill-warn { background: var(--rose-soft); color: var(--rose); cursor: pointer; }
+.orb-status-pill-warn:disabled { opacity: 0.7; cursor: default; }
+.orb-topbar-clock { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; font-weight: 600; color: var(--ink-soft); white-space: nowrap; }
+.orb-topbar-user { display: inline-flex; align-items: center; gap: 8px; padding: 4px 12px 4px 4px; min-height: 40px; border-radius: 999px; border: 1px solid var(--card-border); background: #fff; color: var(--navy); font-family: inherit; font-size: 13px; font-weight: 700; cursor: pointer; transition: border-color var(--hover-speed) ease, box-shadow var(--hover-speed) ease; }
+.orb-topbar-user:hover { border-color: var(--line-hover); box-shadow: 0 6px 16px -10px rgba(245,176,66,0.6); }
+.orb-topbar-user .orb-user-avatar { box-shadow: none; }
+
+.orb-ticker { margin: 0; border-radius: 0; }
+
+.orb-content { flex: 1; width: 100%; max-width: 1240px; margin: 0 auto; padding: 26px 28px 48px; }
+.orb-page-body { display: block; }
+.orb-page-header { margin-bottom: 20px; }
+.orb-page-eyebrow { font-size: 11.5px; font-weight: 700; letter-spacing: 1.4px; text-transform: uppercase; color: #C2851E; }
+.orb-page-title { margin: 4px 0 0; font-size: 26px; font-weight: 800; letter-spacing: -0.025em; color: var(--navy); line-height: 1.2; }
+.orb-page-subtitle { margin: 6px 0 0; font-size: 14px; color: var(--ink-soft); line-height: 1.5; }
+
+/* My Profile brings its own header: match the page header style. */
+.orb-profile-header { margin-bottom: 20px; }
+.orb-profile-header h1 { margin: 0; font-size: 26px; font-weight: 800; letter-spacing: -0.025em; color: var(--navy); }
+.orb-profile-header p { margin: 6px 0 0; font-size: 14px; }
+.orb-pref-info h4, .orb-pref-info p, .orb-activity-text h4, .orb-activity-text p, .orb-profile-panel-head h2 { margin-top: 0; margin-bottom: 0; }
+.orb-pref-info p, .orb-activity-text p { margin-top: 3px; }
+
+/* ---- KPI tiles ---- */
+.orb-stat-row { grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 14px; margin: 4px 0 20px; }
+.orb-stat {
+  text-align: left; padding: 16px 16px 14px; border-radius: var(--radius);
+  background: var(--card); border: 1px solid var(--card-border); box-shadow: var(--shadow-card);
+  backdrop-filter: none; transition: box-shadow var(--hover-speed) ease, border-color var(--hover-speed) ease;
+  overflow: hidden;
+}
+.orb-stat::before { left: 0; right: auto; top: 14px; bottom: 14px; width: 3px; height: auto; border-radius: 0 3px 3px 0; background: var(--line-strong); opacity: 1; }
+.orb-stat-amber::before { background: var(--amber-gradient); }
+.orb-stat-teal::before { background: var(--teal); }
+.orb-stat-rose::before { background: var(--rose); }
+.orb-stat:hover { transform: none; border-color: var(--line-hover); box-shadow: var(--shadow-card-hover); }
+.orb-stat-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.orb-stat-label { margin: 0; font-size: 12.5px; font-weight: 600; color: var(--ink-soft); line-height: 1.3; }
+.orb-stat-icon { width: 30px; height: 30px; border-radius: 9px; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; background: rgba(15,26,44,0.06); color: var(--navy); }
+.orb-stat-amber .orb-stat-icon { background: rgba(245,176,66,0.16); color: #B87C1A; }
+.orb-stat-teal .orb-stat-icon { background: var(--teal-soft); color: var(--teal); }
+.orb-stat-rose .orb-stat-icon { background: var(--rose-soft); color: var(--rose); }
+.orb-stat-value { margin-top: 8px; font-size: 26px; font-weight: 800; letter-spacing: -0.02em; color: var(--navy); line-height: 1.15; }
+.orb-stat-amber .orb-stat-value { color: #C2851E; }
+
+/* ---- Section headings ---- */
+.orb-subhead { display: flex; align-items: center; gap: 9px; font-size: 15px; font-weight: 750; color: var(--navy); margin: 26px 0 12px; }
+.orb-subhead::before { content: ""; width: 4px; height: 16px; border-radius: 3px; background: var(--amber-gradient); flex-shrink: 0; }
+
+/* ---- Cards, rows, panels ---- */
+.orb-clock-top, .orb-breaks-bar, .orb-day-card, .orb-paycard, .orb-settings-card, .orb-profile-card, .orb-profile-panel, .orb-empty {
+  background: var(--card); border: 1px solid var(--card-border); border-radius: var(--radius); box-shadow: var(--shadow-card); backdrop-filter: none;
+}
+.orb-clock-top { padding: 24px; gap: 32px; }
+.orb-empty { border-style: dashed; box-shadow: none; padding: 22px; }
+.orb-roster, .orb-entry-list, .orb-shift-list { gap: 8px; }
+.orb-roster-row, .orb-entry-row, .orb-shift-row, .orb-balance-row {
+  background: var(--card); border: 1px solid var(--card-border); border-radius: 10px; box-shadow: 0 1px 2px rgba(15,26,44,0.04); backdrop-filter: none; min-height: 48px;
+}
+.orb-roster-row { padding: 10px 14px; }
+.orb-roster-row:hover, .orb-entry-row:hover { transform: none; border-color: var(--line-hover); box-shadow: var(--shadow-card); }
+.orb-roster-row .orb-avatar-sm { width: 32px; height: 32px; font-size: 13px; }
+.orb-dot-pulse { position: relative; }
+.orb-dot-pulse::after { content: ""; position: absolute; inset: -4px; border-radius: 50%; border: 2px solid var(--teal); opacity: 0; animation: orb-pulse 2s ease-out infinite; }
+@keyframes orb-pulse { 0% { transform: scale(0.6); opacity: 0.7; } 100% { transform: scale(1.6); opacity: 0; } }
+
+/* ---- Tables ---- */
+.orb-table-wrap { border-radius: var(--radius); border: 1px solid var(--card-border); background: var(--card); box-shadow: var(--shadow-card); }
+.orb-table-wrap > .orb-table { border: none; border-radius: 0; }
+.orb-table { background: var(--card); border-radius: var(--radius); }
+.orb-table th { background: #F7F8FA; font-size: 11px; font-weight: 700; letter-spacing: 0.6px; text-transform: uppercase; color: #5B6B80; padding: 11px 14px; border-bottom: 1px solid var(--card-border); }
+.orb-table td { padding: 11px 14px; border-top: 1px solid rgba(15,26,44,0.05); }
+.orb-table tbody tr { transition: background-color var(--hover-speed) ease; }
+.orb-table tbody tr:hover td { background: rgba(245,176,66,0.06); }
+
+/* ---- Controls ---- */
+.orb-btn { border-radius: 9px; min-height: 40px; }
+.orb-btn-sm { min-height: 32px; border-radius: 8px; }
+.orb-input { border-radius: 9px; min-height: 40px; background: #fff; transition: border-color var(--hover-speed) ease, box-shadow var(--hover-speed) ease; }
+.orb-input:focus { outline: none; border-color: var(--amber); box-shadow: 0 0 0 3px rgba(245,176,66,0.22); }
+.orb-segment, .orb-loc-toggle, .orb-shift-type-toggle { border-radius: 9px; }
+.orb-modal-overlay { backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px); }
+.orb-modal { background: #fff; border-radius: 16px; box-shadow: 0 30px 70px -24px rgba(15,26,44,0.45); padding: 22px; }
+
+/* Embedded tasker tabs (admin → Tasker view): sliding underline */
+.orb-embedded-tasker { border-radius: var(--radius); border: 1px solid var(--card-border); background: rgba(255,255,255,0.5); }
+.orb-tab { position: relative; border-bottom: none; }
+.orb-tab.active { border-bottom-color: transparent; }
+.orb-tab-line { position: absolute; left: 10px; right: 10px; bottom: -1px; height: 3px; border-radius: 3px 3px 0 0; background: var(--amber-gradient); }
+
+.orb-spin { animation: orb-loading-spin 0.9s linear infinite; }
+
+/* ---- Login: keep sage / burnt orange, smoother entrance ---- */
+.orb-pindot { display: inline-block; }
+
+/* ---- Responsive ---- */
+@media (max-width: 1100px) {
+  .orb-topbar-clock { display: none; }
+}
+@media (max-width: 900px) {
+  .orb-topbar { padding: 10px 16px; min-height: 58px; }
+  .orb-topbar-user-name { display: none; }
+  .orb-topbar-user { padding: 4px; }
+  .orb-content { padding: 18px 16px 40px; }
+  .orb-page-title { font-size: 22px; }
+}
+@media (max-width: 720px) {
+  .orb-stat-row { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  .orb-stat { padding: 12px 12px 11px; }
+  .orb-stat-value { font-size: 21px; }
+  .orb-stat-icon { width: 26px; height: 26px; }
+  .orb-status-pill { padding: 0 10px; }
+}
+@media (max-width: 420px) {
+  .orb-status-pill-text { display: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .orb-dot-pulse::after, .orb-spin { animation: none !important; }
+}
+
 `;
