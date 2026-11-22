@@ -3051,6 +3051,31 @@ function OverviewTab({ employees, timeLogs, surveys, balanceSubmissions, account
     teamEarnedWeek += earningsForWeek(subs, now, accounts);
   });
 
+  // Weekly earnings history: the same per-day earnings behind the
+  // "Team earned this week" tile (earningsByDate over every tasker's
+  // balance submissions), bucketed by ISO week (Mon-Sun, via startOfWeek)
+  // so each row ties out exactly with that tile for the current week.
+  const weeklyHistory = useMemo(() => {
+    const map = new Map();
+    taskers.forEach((emp) => {
+      const byDate = earningsByDate(balanceSubmissions[emp.id] || [], accounts);
+      byDate.forEach((amt, dateKey) => {
+        const localDate = parseDateKeyLocal(dateKey);
+        const sortKey = startOfWeek(localDate).getTime();
+        if (!map.has(sortKey)) map.set(sortKey, { sortKey, label: weekLabel(localDate), total: 0 });
+        map.get(sortKey).total += amt;
+      });
+    });
+    const rows = Array.from(map.values()).sort((a, b) => b.sortKey - a.sortKey);
+    rows.forEach((row, i) => {
+      const prev = rows[i + 1];
+      row.change = prev ? row.total - prev.total : null;
+      row.isCurrent = row.sortKey === weekStart;
+    });
+    return rows;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [employees, balanceSubmissions, accounts]);
+
   return (
     <div className="orb-panel">
       <StaggerGroup className="orb-stat-row">
@@ -3092,6 +3117,26 @@ function OverviewTab({ employees, timeLogs, surveys, balanceSubmissions, account
           );
         })}
       </StaggerGroup>
+
+      <div className="orb-subhead">Weekly earnings history</div>
+      {weeklyHistory.length === 0 ? (
+        <div className="orb-empty">No earnings recorded yet. Weekly totals will appear here once taskers submit balances.</div>
+      ) : (
+        <div className="orb-table-wrap">
+          <table className="orb-table">
+            <thead><tr><th>Week</th><th>Team earned</th><th>Change vs previous week</th></tr></thead>
+            <tbody>
+              {weeklyHistory.map((w) => (
+                <tr key={w.sortKey}>
+                  <td>{w.label} {w.isCurrent && <span className="orb-badge orb-badge-live">This week</span>}</td>
+                  <td className="orb-num">{fmtMoney(w.total)}</td>
+                  <td className="orb-num">{w.change === null ? "—" : `${w.change >= 0 ? "+" : ""}${fmtMoney(w.change)}`}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   );
 }
