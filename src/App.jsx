@@ -342,6 +342,57 @@ function surveyToRow(empId, e) {
 function surveyFromRow(row) {
   return { id: row.id, ts: row.ts, result: row.result };
 }
+
+// A survey is shown in the log only after Supabase returns the saved row.
+// The old fire-and-forget upsert allowed failed writes to appear successful
+// until the next page reload.
+function surveyDbError(error, action) {
+  console.error(`Orbital X survey ${action} failed:`, error);
+  if (error?.code === "42P01" || error?.code === "PGRST205") {
+    return "The survey_entries table is missing from Supabase. Ask an admin to check the database schema.";
+  }
+  if (error?.code === "42501" || /row.level security|permission denied/i.test(error?.message || "")) {
+    return "Supabase denied access to survey_entries. Ask an admin to check its table permissions and RLS policies.";
+  }
+  return error?.message || `Unable to ${action} the survey. Please try again.`;
+}
+
+async function saveSurveyEntry(empId, entry) {
+  if (!supabase) return { ok: false, error: "Database is not configured. Survey was not saved." };
+  try {
+    const { data, error } = await supabase
+      .from("survey_entries")
+      .upsert(surveyToRow(empId, entry), { onConflict: "id" })
+      .select("id,employee_id")
+      .single();
+    if (error) throw error;
+    if (data?.id !== entry.id || data.employee_id !== empId) {
+      throw new Error("Supabase did not confirm the survey entry was saved.");
+    }
+    return { ok: true };
+  } catch (error) {
+    return { ok: false, error: surveyDbError(error, "save") };
+  }
+}
+
+async function removeSurveyEntry(empId, entryId) {
+  if (!supabase) return { ok: false, error: "Database is not configured. Survey was not removed." };
+  try {
+    const { data, error } = await supabase
+      .from("survey_entries")
+      .delete()
+      .eq("id", entryId)
+      .eq("employee_id", empId)
+      .select("id");
+    if (error) throw error;
+    if (!data?.some((row) => row.id === entryId)) {
+      throw new Error("Supabase did not confirm the survey entry was removed.");
+    }
+    return { ok: true };
+  } catch (error) {
+    return { ok: false, error: surveyDbError(error, "delete") };
+  }
+}
 function shiftToRow(s) {
   return { id: s.id, employee_id: s.employeeId, date: s.date, shift_type: s.shiftType, start_time: s.startTime || "", end_time: s.endTime || "", notes: s.notes || "" };
 }
@@ -2515,6 +2566,29 @@ function TimeClockTab({ sessions, breakMinutes, onClockIn, onClockOut, onStartBr
 /* ---------------------------------- Tasker: Survey Log ---------------------------------- */
 
 function SurveyLogTab({ liveEntries, importedWeeks, onLog, onDeleteEntry, readOnly }) {
+  const [savingAction, setSavingAction] = useState(null);
+  const [saveFeedback, setSaveFeedback] = useState(null);
+  const requestPending = useRef(false);
+
+  async function runSurveyAction(action, operation) {
+    if (requestPending.current) return;
+    requestPending.current = true;
+    setSavingAction(action);
+    setSaveFeedback(null);
+    try {
+      const response = await operation();
+      setSaveFeedback(response?.ok
+        ? { type: "success", message: action === "delete" ? "Survey removed from the database." : "Survey saved to the database." }
+        : { type: "error", message: response?.error || "Database did not save the change. Please try again." });
+    } catch (error) {
+      console.error("Survey action failed:", error);
+      setSaveFeedback({ type: "error", message: "Could not reach the database. Please try again." });
+    } finally {
+      requestPending.current = false;
+      setSavingAction(null);
+    }
+  }
+
   const now = Date.now();
   const weekStart = startOfWeek(now).getTime(), weekEnd = endOfWeek(now).getTime();
   const currentWeekEntries = liveEntries
@@ -2555,13 +2629,19 @@ function SurveyLogTab({ liveEntries, importedWeeks, onLog, onDeleteEntry, readOn
 
       {!readOnly && (
         <div className="orb-log-buttons">
-          <button className="orb-btn orb-btn-teal orb-btn-lg" onClick={() => onLog("successful")}>
-            <CheckCircle2 size={18} /> Log successful
+          <button className="orb-btn orb-btn-teal orb-btn-lg" disabled={!!savingAction} onClick={() => runSurveyAction("save", () => onLog("successful"))}>
+            <CheckCircle2 size={18} /> {savingAction === "save" ? "Saving…" : "Log successful"}
           </button>
-          <button className="orb-btn orb-btn-rose orb-btn-lg" onClick={() => onLog("screened_out")}>
-            <XCircle size={18} /> Log screened out
+          <button className="orb-btn orb-btn-rose orb-btn-lg" disabled={!!savingAction} onClick={() => runSurveyAction("save", () => onLog("screened_out"))}>
+            <XCircle size={18} /> {savingAction === "save" ? "Saving…" : "Log screened out"}
           </button>
         </div>
+      )}
+      {savingAction && <p role="status" aria-live="polite" className="orb-survey-save-status">Saving change to Supabase…</p>}
+      {saveFeedback && (
+        <p role={saveFeedback.type === "error" ? "alert" : "status"} className={`orb-survey-save-status ${saveFeedback.type === "error" ? "orb-survey-save-error" : "orb-survey-save-success"}`}>
+          {saveFeedback.message}
+        </p>
       )}
 
       <div className="orb-subhead">This week's entries</div>
@@ -2575,7 +2655,7 @@ function SurveyLogTab({ liveEntries, importedWeeks, onLog, onDeleteEntry, readOn
               <span className="orb-entry-result">{e.result === "successful" ? "Successful" : "Screened out"}</span>
               <span className="orb-entry-time">{fmtTime(e.ts)}</span>
               {!readOnly && (
-                <button className="orb-icon-btn orb-icon-btn-danger" onClick={() => onDeleteEntry(e.id)} aria-label="Remove entry">
+                <button className="orb-icon-btn orb-icon-btn-danger" disabled={!!savingAction} onClick={() => runSurveyAction("delete", () => onDeleteEntry(e.id))} aria-label="Remove entry">
                   <Trash2 size={14} />
                 </button>
               )}
@@ -4850,23 +4930,29 @@ export default function App() {
     });
   }, [persist]);
 
-  const logSurvey = useCallback((empId, result) => {
-    setSurveys((prev) => {
-      const entries = prev[empId] || [];
-      const newEntry = { id: uid(), ts: new Date().toISOString(), result };
-      persist(sbUpsert("survey_entries", [surveyToRow(empId, newEntry)]));
-      return { ...prev, [empId]: [...entries, newEntry] };
-    });
-  }, [persist]);
+  const logSurvey = useCallback(async (empId, result) => {
+    if (result !== "successful" && result !== "screened_out") {
+      return { ok: false, error: "Invalid survey result." };
+    }
+    const newEntry = { id: uid(), ts: new Date().toISOString(), result };
+    const saved = await saveSurveyEntry(empId, newEntry);
+    if (!saved.ok) return saved;
+    setSurveys((prev) => ({
+      ...prev,
+      [empId]: [...(prev[empId] || []), newEntry],
+    }));
+    return { ok: true };
+  }, []);
 
-  const deleteSurvey = useCallback((empId, entryId) => {
-    setSurveys((prev) => {
-      const entries = prev[empId] || [];
-      const updated = entries.filter((e) => e.id !== entryId);
-      persist(sbDelete("survey_entries", entryId));
-      return { ...prev, [empId]: updated };
-    });
-  }, [persist]);
+  const deleteSurvey = useCallback(async (empId, entryId) => {
+    const removed = await removeSurveyEntry(empId, entryId);
+    if (!removed.ok) return removed;
+    setSurveys((prev) => ({
+      ...prev,
+      [empId]: (prev[empId] || []).filter((entry) => entry.id !== entryId),
+    }));
+    return { ok: true };
+  }, []);
 
   // [CHANGED] New employees are created through a server-side RPC that hashes
   // the PIN before it is stored. The plaintext PIN exists only in this form
@@ -5900,6 +5986,9 @@ html, body { overflow-x: hidden; }
 .orb-entry-row:hover { border-color: var(--line-hover); transform: translateX(2px); }
 .orb-entry-result { font-weight: 600; text-shadow: var(--text-halo); }
 .orb-entry-time { color: var(--ink-soft); margin-left: auto; font-size: 12.5px; text-shadow: var(--text-halo); }
+.orb-survey-save-status { margin: 10px 0 0; font-size: 13px; font-weight: 650; color: var(--ink-soft); }
+.orb-survey-save-error { color: var(--rose); }
+.orb-survey-save-success { color: var(--teal); }
 
 .orb-roster { display: flex; flex-direction: column; gap: 6px; }
 /* [CHANGED] This is the closest match to the reference's "team-row": fully
