@@ -141,6 +141,26 @@ async function sbSelect(table, query = "?select=*") {
   }
 }
 
+// Survey history must be fetched in pages: PostgREST commonly limits responses
+// to 1,000 rows. Failed reads must throw instead of masquerading as [].
+async function fetchSurveyHistory() {
+  if (!supabase) throw new Error("Supabase is not configured.");
+  const pageSize = 1000;
+  const rows = [];
+  for (let offset = 0; ; offset += pageSize) {
+    const { data, error } = await supabase
+      .from("survey_entries")
+      .select("id,employee_id,ts,result")
+      .order("ts", { ascending: false })
+      .order("id", { ascending: false })
+      .range(offset, offset + pageSize - 1);
+    if (error) throw new Error(`Survey history read failed: ${error.message} (${error.code || "unknown"})`);
+    if (!Array.isArray(data)) throw new Error("Survey history read returned an invalid response.");
+    rows.push(...data);
+    if (data.length < pageSize) return rows;
+  }
+}
+
 // Upsert always sends the FULL row. That matches how this app already keeps
 // full objects in local state, and lets one function cover both "create"
 // and "update" (insert, or overwrite on primary-key conflict).
@@ -4566,6 +4586,7 @@ export default function App() {
   const [employees, setEmployees] = useState([]);
   const [timeLogs, setTimeLogs] = useState({});
   const [surveys, setSurveys] = useState({});
+  const [surveyReadError, setSurveyReadError] = useState(null);
   const [shifts, setShifts] = useState({});
   const [taskLogs, setTaskLogs] = useState({});
   const [taskPayouts, setTaskPayouts] = useState({});
@@ -4594,6 +4615,7 @@ export default function App() {
       setEmployees(sortEmployees(SEED_EMPLOYEES));
       setTimeLogs({});
       setSurveys({});
+      setSurveyReadError("Supabase is not configured. Survey history cannot be loaded.");
       setShifts({});
       setTaskLogs({});
       setBalanceSubmissions({});
@@ -4625,7 +4647,10 @@ export default function App() {
           // camelCase via employeeFromRow just below.
           sbSelect("employees", "?select=id,name,role,active,username,email,phone,location,bio,avatar_url,notify_email,notify_push,notify_weekly_summary,public_profile,verified"),
           sbSelect("time_logs", "?select=*"),
-          sbSelect("survey_entries", "?select=*"),
+          fetchSurveyHistory().catch((error) => {
+            console.error("Survey history could not be loaded:", error);
+            return { surveyReadFailure: error.message || "Unable to load survey history." };
+          }),
           sbSelect("shifts", "?select=*"),
           sbSelect("task_logs", "?select=*"),
           sbSelect("balance_submissions", "?select=*"),
@@ -4674,12 +4699,18 @@ export default function App() {
     });
     Object.values(logsByEmp).forEach((arr) => arr.sort((a, b) => new Date(a.clockIn) - new Date(b.clockIn)));
 
+    const surveyLoadError = surveyRows && !Array.isArray(surveyRows)
+      ? surveyRows.surveyReadFailure || "Unknown survey history error."
+      : !healthy ? "Supabase is unavailable. Survey history could not be loaded." : null;
+    setSurveyReadError(surveyLoadError);
     const survByEmp = {};
     empList.forEach((e) => { survByEmp[e.id] = []; });
-    (surveyRows || []).forEach((row) => {
-      if (!survByEmp[row.employee_id]) survByEmp[row.employee_id] = [];
-      survByEmp[row.employee_id].push(surveyFromRow(row));
-    });
+    if (!surveyLoadError) {
+      (surveyRows || []).forEach((row) => {
+        if (!survByEmp[row.employee_id]) survByEmp[row.employee_id] = [];
+        survByEmp[row.employee_id].push(surveyFromRow(row));
+      });
+    }
 
     const shiftsByEmp = {};
     empList.forEach((e) => { shiftsByEmp[e.id] = []; });
@@ -5382,6 +5413,15 @@ export default function App() {
     <MotionConfig reducedMotion="user">
     <div className="orb-app">
       <style>{CSS}</style>
+      {!loading && currentUser && surveyReadError && (
+        <div className="orb-survey-read-alert" role="alert">
+          <strong>Survey history could not be loaded.</strong> The records may still exist in Supabase.
+          <span> {surveyReadError}</span>
+          <button type="button" onClick={() => loadAll(true)} disabled={checkingDb}>
+            {checkingDb ? "Retrying…" : "Retry loading"}
+          </button>
+        </div>
+      )}
       {/* [CHANGED] The $ layer now skips the sign-in screen — LoginScreen
           renders its own sage/burnt-orange asset icons instead (see
           LoginAssets). Loading and the signed-in app keep the $ signs. */}
@@ -5988,6 +6028,8 @@ html, body { overflow-x: hidden; }
 .orb-entry-time { color: var(--ink-soft); margin-left: auto; font-size: 12.5px; text-shadow: var(--text-halo); }
 .orb-survey-save-status { margin: 10px 0 0; font-size: 13px; font-weight: 650; color: var(--ink-soft); }
 .orb-survey-save-error { color: var(--rose); }
+.orb-survey-read-alert { position: relative; z-index: 40; display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding: 12px 20px; background: #fff2e8; border-bottom: 1px solid #d2564e; color: #802a24; font-size: 13px; }
+.orb-survey-read-alert button { border: 1px solid currentColor; background: transparent; color: inherit; border-radius: 8px; padding: 6px 10px; font-weight: 700; cursor: pointer; }
 .orb-survey-save-success { color: var(--teal); }
 
 .orb-roster { display: flex; flex-direction: column; gap: 6px; }
