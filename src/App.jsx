@@ -141,6 +141,32 @@ async function sbSelect(table, query = "?select=*") {
   }
 }
 
+// Supabase REST limits a request to the project's maximum row count (usually
+// 1,000). Reading survey_entries without pagination returned an arbitrary
+// subset, which can hide recent surveys after a page refresh. Order newest
+// first, then request every page until the complete history has been loaded.
+async function sbSelectAllSurveys() {
+  if (!DB_CONFIGURED) throw new Error("Supabase is not configured.");
+  const pageSize = 500;
+  const entries = [];
+  let offset = 0;
+  while (true) {
+    const query = `?select=id,employee_id,ts,result&order=ts.desc,id.desc&limit=${pageSize}&offset=${offset}`;
+    const res = await fetch(`${SB_URL}/rest/v1/survey_entries${query}`, {
+      headers: sbHeaders(),
+    });
+    if (!res.ok) {
+      const detail = await res.text().catch(() => "");
+      throw new Error(`survey_entries read failed (${res.status}): ${detail.slice(0, 250)}`);
+    }
+    const page = await res.json();
+    if (!Array.isArray(page)) throw new Error("Unexpected survey_entries response.");
+    entries.push(...page);
+    if (page.length < pageSize) return entries;
+    offset += pageSize;
+  }
+}
+
 // Upsert always sends the FULL row. That matches how this app already keeps
 // full objects in local state, and lets one function cover both "create"
 // and "update" (insert, or overwrite on primary-key conflict).
@@ -4566,6 +4592,7 @@ export default function App() {
   const [employees, setEmployees] = useState([]);
   const [timeLogs, setTimeLogs] = useState({});
   const [surveys, setSurveys] = useState({});
+  const [surveyLoadError, setSurveyLoadError] = useState("");
   const [shifts, setShifts] = useState({});
   const [taskLogs, setTaskLogs] = useState({});
   const [taskPayouts, setTaskPayouts] = useState({});
@@ -4588,6 +4615,7 @@ export default function App() {
 
   const loadAll = useCallback(async (isRetry) => {
     if (isRetry) setCheckingDb(true);
+    setSurveyLoadError("");
 
     if (!DB_CONFIGURED) {
       setDbOk(false);
@@ -4625,7 +4653,10 @@ export default function App() {
           // camelCase via employeeFromRow just below.
           sbSelect("employees", "?select=id,name,role,active,username,email,phone,location,bio,avatar_url,notify_email,notify_push,notify_weekly_summary,public_profile,verified"),
           sbSelect("time_logs", "?select=*"),
-          sbSelect("survey_entries", "?select=*"),
+          sbSelectAllSurveys().catch((error) => {
+            console.error("Orbital X could not restore survey history:", error);
+            return { loadError: error.message || "Could not load survey entries." };
+          }),
           sbSelect("shifts", "?select=*"),
           sbSelect("task_logs", "?select=*"),
           sbSelect("balance_submissions", "?select=*"),
@@ -4674,9 +4705,15 @@ export default function App() {
     });
     Object.values(logsByEmp).forEach((arr) => arr.sort((a, b) => new Date(a.clockIn) - new Date(b.clockIn)));
 
+    const surveyReadFailed = surveyRows === null || !Array.isArray(surveyRows);
+    if (surveyReadFailed) {
+      // Never mistake a failed read for a genuinely empty survey history.
+      setSurveyLoadError(surveyRows?.loadError || "Survey history could not be loaded. Retry the database connection.");
+      setDbOk(false);
+    }
     const survByEmp = {};
     empList.forEach((e) => { survByEmp[e.id] = []; });
-    (surveyRows || []).forEach((row) => {
+    if (!surveyReadFailed) surveyRows.forEach((row) => {
       if (!survByEmp[row.employee_id]) survByEmp[row.employee_id] = [];
       survByEmp[row.employee_id].push(surveyFromRow(row));
     });
@@ -4722,7 +4759,8 @@ export default function App() {
 
     setEmployees(empList);
     setTimeLogs(logsByEmp);
-    setSurveys(survByEmp);
+    // Do not erase any already-visible entries when a retry fails.
+    if (!surveyReadFailed) setSurveys(survByEmp);
     setShifts(shiftsByEmp);
     setTaskLogs(taskLogsByEmp);
     setTaskPayouts(payoutsByEmp);
@@ -4824,7 +4862,8 @@ export default function App() {
       const allTaskLogs = employees.flatMap((e) => (taskLogs[e.id] || []).map(taskLogToRow));
       const allBalances = employees.flatMap((e) => (balanceSubmissions[e.id] || []).map(balanceToRow));
       await sbUpsert("time_logs", allSessions);
-      await sbUpsert("survey_entries", allSurveys);
+      const restored = await sbUpsert("survey_entries", allSurveys);
+      if (!restored) setSurveyLoadError("Survey history could not be synchronized. Please retry the database connection.");
       await sbUpsert("shifts", allShifts);
       await sbUpsert("task_logs", allTaskLogs);
       await sbUpsert("task_payouts", Object.values(taskPayouts).flat().map(taskPayoutToRow));
@@ -5418,6 +5457,14 @@ export default function App() {
           checkingDb={checkingDb}
           ticker={<RankTicker employees={employees} balanceSubmissions={balanceSubmissions} accounts={accounts} />}
         >
+          {surveyLoadError && (
+            <div role="alert" style={{ margin: "12px 24px", padding: "12px 16px", border: "1px solid #D2564E", borderRadius: 10, color: "#9f2a24", background: "#fff4f2" }}>
+              <strong>Survey history is not fully loaded.</strong> {surveyLoadError} Your saved database records have not been deleted.
+              <button type="button" className="orb-btn orb-btn-sm" style={{ marginLeft: 12 }} onClick={() => loadAll(true)} disabled={checkingDb}>
+                {checkingDb ? "Retrying…" : "Retry loading"}
+              </button>
+            </div>
+          )}
           {currentUser.role === "admin" ? (
             <AdminView
               user={currentUser}
